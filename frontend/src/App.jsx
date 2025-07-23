@@ -7,6 +7,7 @@ import Analytics from './pages/Analytics'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import DataManagement from './pages/DataManagement'
+import TrainingDataEditor from './pages/TrainingDataEditor'
 import './App.css'
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
                 <Route path="/analytics" element={<Analytics />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/data" element={<DataManagement />} />
+                <Route path="/training" element={<TrainingDataEditor />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </main>
