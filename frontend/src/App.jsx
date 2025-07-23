@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import ChartComponent from './ChartComponent.jsx'
 import './App.css'
 
@@ -139,24 +139,7 @@ function App() {
     setContainers(updatedContainers)
   }
 
-  const deleteSelectedContainer = () => {
-    if (selectedContainer) {
-      setContainers(containers.filter(c => c.id !== selectedContainer))
-      setSelectedContainer(null)
-    }
-  }
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault()
-        deleteSelectedContainer()
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [selectedContainer, containers])
 
   return (
     <div className="app">

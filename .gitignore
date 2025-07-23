@@ -7,7 +7,7 @@ wheels/
 *.egg-info
 
 # Virtual environments
-backend/.venv
+backend/.venv/
 
 # Logs
 logs
@@ -33,3 +33,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.claude/
+.venv/
