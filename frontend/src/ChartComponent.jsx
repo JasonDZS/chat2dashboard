@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
+import { useBackend } from './context/BackendContext'
 
 const ChartComponent = ({ userInput }) => {
   const chartRef = useRef(null)
@@ -7,6 +8,7 @@ const ChartComponent = ({ userInput }) => {
   const [chartTitle, setChartTitle] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const { backendUrl } = useBackend()
 
   useEffect(() => {
     const generateChart = async () => {
@@ -20,7 +22,7 @@ const ChartComponent = ({ userInput }) => {
         const formData = new FormData()
         formData.append('query', userInput)
         
-        const response = await fetch('http://localhost:8000/generate', {
+        const response = await fetch(`${backendUrl}/generate`, {
           method: 'POST',
           body: formData
         })
@@ -104,7 +106,7 @@ const ChartComponent = ({ userInput }) => {
     }
 
     generateChart()
-  }, [userInput])
+  }, [userInput, backendUrl])
 
   useEffect(() => {
     if (!chartRef.current || !chartOption) return

@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BackendProvider } from './context/BackendContext'
 import TopNav from './components/TopNav'
 import SideNav from './components/SideNav'
 import Dashboard from './pages/Dashboard'
@@ -9,23 +10,25 @@ import './App.css'
 
 function App() {
   return (
-    <Router>
-      <div className="app">
-        <TopNav />
-        <div className="app-body">
-          <SideNav />
-          <main className="main-content">
-            <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
-          </main>
+    <BackendProvider>
+      <Router>
+        <div className="app">
+          <TopNav />
+          <div className="app-body">
+            <SideNav />
+            <main className="main-content">
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </main>
+          </div>
         </div>
-      </div>
-    </Router>
+      </Router>
+    </BackendProvider>
   )
 }
 
