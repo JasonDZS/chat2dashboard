@@ -26,10 +26,10 @@ const Dashboard = () => {
       const response = await fetch(`${backendUrl}/databases`)
       if (response.ok) {
         const data = await response.json()
-        setAvailableDatabases(data.databases || [])
+        setAvailableDatabases(data || [])
         // Set first database as default if available
-        if (data.databases && data.databases.length > 0 && !selectedDatabase) {
-          setSelectedDatabase(data.databases[0].name)
+        if (data && data.length > 0 && !selectedDatabase) {
+          setSelectedDatabase(data[0].name)
         }
       }
     } catch (error) {
