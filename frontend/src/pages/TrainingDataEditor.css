@@ -220,6 +220,12 @@
   margin-bottom: 1.5rem;
 }
 
+.section-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 /* Buttons */
 .btn {
   padding: 0.75rem 1.5rem;
@@ -275,12 +281,14 @@
 }
 
 .btn-secondary {
-  background: #6c757d;
-  color: white;
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  color: #2c3e50;
+  box-shadow: 0 4px 15px rgba(168, 237, 234, 0.3);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #545b62;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(168, 237, 234, 0.4);
 }
 
 .btn-small {

@@ -22,6 +22,7 @@ const generateCacheKey = (input) => {
 
 const ChartComponent = ({ userInput, dbName, chartType }) => {
   const chartRef = useRef(null)
+  const isGeneratingRef = useRef(false)
   const [chartOption, setChartOption] = useState(null)
   const [chartTitle, setChartTitle] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,6 +33,10 @@ const ChartComponent = ({ userInput, dbName, chartType }) => {
     const generateChart = async () => {
       if (!userInput.trim() || !dbName) return
       
+      // Prevent duplicate calls in React StrictMode
+      if (isGeneratingRef.current) return
+      isGeneratingRef.current = true
+      
       // Check cache first (include dbName and chartType in cache key for uniqueness)
       const cacheKey = generateCacheKey(`${userInput}_${dbName}_${chartType || 'auto'}`)
       const cachedData = localStorage.getItem(cacheKey)
@@ -41,6 +46,7 @@ const ChartComponent = ({ userInput, dbName, chartType }) => {
           const { option, title } = JSON.parse(cachedData)
           setChartOption(option)
           setChartTitle(title)
+          isGeneratingRef.current = false
           return
         } catch (error) {
           console.error('Failed to load cached chart data:', error)
@@ -148,10 +154,16 @@ const ChartComponent = ({ userInput, dbName, chartType }) => {
         })
       } finally {
         setLoading(false)
+        isGeneratingRef.current = false
       }
     }
 
     generateChart()
+    
+    // Cleanup function to reset flag when dependencies change
+    return () => {
+      isGeneratingRef.current = false
+    }
   }, [userInput, dbName, chartType, backendUrl])
 
   useEffect(() => {

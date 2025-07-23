@@ -15,6 +15,7 @@ const TrainingDataEditor = () => {
   const [newQuestion, setNewQuestion] = useState('');
   const [newSql, setNewSql] = useState('');
   const [isAddingNew, setIsAddingNew] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   
   // Form states for adding new document
   const [newDocTitle, setNewDocTitle] = useState('');
@@ -140,6 +141,36 @@ const TrainingDataEditor = () => {
       setError('Failed to delete training data: ' + err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGenerateAISql = async (numQuestions = 10) => {
+    if (!selectedDatabase) {
+      setError('Please select a database first');
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${backendUrl}/generate-sql/${selectedDatabase}?num_questions=${numQuestions}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setSuccessMessage(`${result.message}. Added ${result.validated_records} new SQL records.`);
+      
+      // Refresh schema data
+      await fetchSchemaData();
+    } catch (err) {
+      setError('Failed to generate AI SQL: ' + err.message);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -471,13 +502,23 @@ const TrainingDataEditor = () => {
           <div className="schema-section">
             <div className="section-header">
               <h2>SQL Training Data ({(schemaData.sql || []).length})</h2>
-              <button
-                className="btn btn-primary"
-                onClick={() => setIsAddingNew(!isAddingNew)}
-                disabled={isLoading}
-              >
-                {isAddingNew ? 'Cancel' : 'Add New'}
-              </button>
+              <div className="section-actions">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => handleGenerateAISql(10)}
+                  disabled={isLoading || isGenerating}
+                  style={{ marginRight: '8px' }}
+                >
+                  {isGenerating ? 'Gen...' : '🌟'}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => setIsAddingNew(!isAddingNew)}
+                  disabled={isLoading}
+                >
+                  {isAddingNew ? 'Cancel' : 'Add New'}
+                </button>
+              </div>
             </div>
 
             {/* Add New Form */}
