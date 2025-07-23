@@ -15,6 +15,16 @@ const TrainingDataEditor = () => {
   const [newQuestion, setNewQuestion] = useState('');
   const [newSql, setNewSql] = useState('');
   const [isAddingNew, setIsAddingNew] = useState(false);
+  
+  // Form states for adding new document
+  const [newDocTitle, setNewDocTitle] = useState('');
+  const [newDocContent, setNewDocContent] = useState('');
+  const [isAddingNewDoc, setIsAddingNewDoc] = useState(false);
+  
+  // Editing states
+  const [editingTable, setEditingTable] = useState(null);
+  const [editingSql, setEditingSql] = useState(null);
+  const [editingDocument, setEditingDocument] = useState(null);
 
   // Load databases on component mount
   useEffect(() => {
@@ -133,6 +143,37 @@ const TrainingDataEditor = () => {
     }
   };
 
+  const handleAddDocument = () => {
+    if (!newDocContent.trim()) {
+      setError('Document content is required');
+      return;
+    }
+
+    const newDoc = {
+      title: newDocTitle.trim() || undefined,
+      content: newDocContent.trim()
+    };
+
+    const updatedDocuments = [...(schemaData.documents || []), newDoc];
+    setSchemaData({ ...schemaData, documents: updatedDocuments });
+    
+    setNewDocTitle('');
+    setNewDocContent('');
+    setIsAddingNewDoc(false);
+    setSuccessMessage('Document added successfully');
+  };
+
+  const handleDeleteDocument = (index) => {
+    if (!confirm('Are you sure you want to delete this document?')) {
+      return;
+    }
+
+    const updatedDocuments = [...(schemaData.documents || [])];
+    updatedDocuments.splice(index, 1);
+    setSchemaData({ ...schemaData, documents: updatedDocuments });
+    setSuccessMessage('Document deleted successfully');
+  };
+
   const handleUpdateSchema = async () => {
     if (!schemaData) return;
 
@@ -239,12 +280,192 @@ const TrainingDataEditor = () => {
             <div className="tables-list">
               {Object.entries(schemaData.tables || {}).map(([tableName, createSql]) => (
                 <div key={tableName} className="table-item">
-                  <h3>{tableName}</h3>
-                  <pre className="sql-code">{createSql}</pre>
+                  <div className="table-header">
+                    <h3>{tableName}</h3>
+                    <button
+                      className="btn btn-small btn-secondary"
+                      onClick={() => setEditingTable(editingTable === tableName ? null : tableName)}
+                      disabled={isLoading}
+                    >
+                      {editingTable === tableName ? 'Cancel' : 'Edit'}
+                    </button>
+                  </div>
+                  {editingTable === tableName ? (
+                    <div className="edit-form">
+                      <textarea
+                        value={createSql}
+                        onChange={(e) => {
+                          const updatedTables = { ...schemaData.tables };
+                          updatedTables[tableName] = e.target.value;
+                          setSchemaData({ ...schemaData, tables: updatedTables });
+                        }}
+                        rows="8"
+                        className="sql-editor"
+                      />
+                      <div className="edit-actions">
+                        <button
+                          className="btn btn-success btn-small"
+                          onClick={() => setEditingTable(null)}
+                          disabled={isLoading}
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <pre className="sql-code">{createSql}</pre>
+                  )}
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Documents */}
+          <div className="schema-section">
+            <div className="section-header">
+              <h2>Documents ({(schemaData.documents || []).length})</h2>
+              <button
+                className="btn btn-primary"
+                onClick={() => setIsAddingNewDoc(!isAddingNewDoc)}
+                disabled={isLoading}
+              >
+                {isAddingNewDoc ? 'Cancel' : 'Add New'}
+              </button>
+            </div>
+
+            {/* Add New Document Form */}
+            {isAddingNewDoc && (
+              <div className="add-document-form">
+                <div className="form-group">
+                  <label htmlFor="new-doc-title">Title (optional):</label>
+                  <input
+                    id="new-doc-title"
+                    type="text"
+                    value={newDocTitle}
+                    onChange={(e) => setNewDocTitle(e.target.value)}
+                    placeholder="Enter document title..."
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="new-doc-content">Content:</label>
+                  <textarea
+                    id="new-doc-content"
+                    value={newDocContent}
+                    onChange={(e) => setNewDocContent(e.target.value)}
+                    placeholder="Enter document content..."
+                    rows="6"
+                    disabled={isLoading}
+                  />
+                </div>
+                <div className="form-actions">
+                  <button
+                    className="btn btn-success"
+                    onClick={handleAddDocument}
+                    disabled={isLoading || !newDocContent.trim()}
+                  >
+                    Add Document
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setIsAddingNewDoc(false);
+                      setNewDocTitle('');
+                      setNewDocContent('');
+                    }}
+                    disabled={isLoading}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="documents-list">
+                {(schemaData.documents || []).map((doc, index) => (
+                  <div key={index} className="document-item">
+                    <div className="document-header">
+                      <h3>Document #{index + 1}</h3>
+                      {doc.title && <span className="document-title">{doc.title}</span>}
+                      <div className="document-actions">
+                        <button
+                          className="btn btn-small btn-secondary"
+                          onClick={() => setEditingDocument(editingDocument === index ? null : index)}
+                          disabled={isLoading}
+                        >
+                          {editingDocument === index ? 'Cancel' : 'Edit'}
+                        </button>
+                        <button
+                          className="btn btn-small btn-danger"
+                          onClick={() => handleDeleteDocument(index)}
+                          disabled={isLoading}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    <div className="document-content">
+                      {editingDocument === index ? (
+                        <div className="edit-form">
+                          {doc.title !== undefined && (
+                            <div className="form-group">
+                              <label>Title:</label>
+                              <input
+                                type="text"
+                                value={doc.title || ''}
+                                onChange={(e) => {
+                                  const updatedDocuments = [...schemaData.documents];
+                                  updatedDocuments[index] = { ...updatedDocuments[index], title: e.target.value };
+                                  setSchemaData({ ...schemaData, documents: updatedDocuments });
+                                }}
+                                className="title-editor"
+                              />
+                            </div>
+                          )}
+                          <div className="form-group">
+                            <label>Content:</label>
+                            <textarea
+                              value={doc.content || doc.text || JSON.stringify(doc, null, 2)}
+                              onChange={(e) => {
+                                const updatedDocuments = [...schemaData.documents];
+                                if (doc.content !== undefined) {
+                                  updatedDocuments[index] = { ...updatedDocuments[index], content: e.target.value };
+                                } else if (doc.text !== undefined) {
+                                  updatedDocuments[index] = { ...updatedDocuments[index], text: e.target.value };
+                                } else {
+                                  try {
+                                    updatedDocuments[index] = JSON.parse(e.target.value);
+                                  } catch {
+                                    // Keep as string if JSON parsing fails
+                                  }
+                                }
+                                setSchemaData({ ...schemaData, documents: updatedDocuments });
+                              }}
+                              rows="8"
+                              className="document-editor"
+                            />
+                          </div>
+                          <div className="edit-actions">
+                            <button
+                              className="btn btn-success btn-small"
+                              onClick={() => setEditingDocument(null)}
+                              disabled={isLoading}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <pre className="document-text">{doc.content || doc.text || JSON.stringify(doc, null, 2)}</pre>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {(!schemaData.documents || schemaData.documents.length === 0) && (
+                  <p className="no-data">No documents available. Add some to get started!</p>
+                )}
+              </div>
+            </div>
 
           {/* SQL Training Data */}
           <div className="schema-section">
@@ -316,22 +537,68 @@ const TrainingDataEditor = () => {
                     <span className="training-date">
                       {item.added_at ? new Date(item.added_at).toLocaleDateString() : 'N/A'}
                     </span>
-                    <button
-                      className="btn btn-danger btn-small"
-                      onClick={() => handleDeleteSqlTraining(index)}
-                      disabled={isLoading}
-                    >
-                      Delete
-                    </button>
+                    <div className="training-actions">
+                      <button
+                        className="btn btn-secondary btn-small"
+                        onClick={() => setEditingSql(editingSql === index ? null : index)}
+                        disabled={isLoading}
+                      >
+                        {editingSql === index ? 'Cancel' : 'Edit'}
+                      </button>
+                      <button
+                        className="btn btn-danger btn-small"
+                        onClick={() => handleDeleteSqlTraining(index)}
+                        disabled={isLoading}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                   <div className="training-content">
                     <div className="question">
                       <label>Question:</label>
-                      <p>{item.question}</p>
+                      {editingSql === index ? (
+                        <input
+                          type="text"
+                          value={item.question}
+                          onChange={(e) => {
+                            const updatedSql = [...schemaData.sql];
+                            updatedSql[index] = { ...updatedSql[index], question: e.target.value };
+                            setSchemaData({ ...schemaData, sql: updatedSql });
+                          }}
+                          className="question-editor"
+                        />
+                      ) : (
+                        <p>{item.question}</p>
+                      )}
                     </div>
                     <div className="sql">
                       <label>SQL:</label>
-                      <pre className="sql-code">{item.sql}</pre>
+                      {editingSql === index ? (
+                        <div className="edit-form">
+                          <textarea
+                            value={item.sql}
+                            onChange={(e) => {
+                              const updatedSql = [...schemaData.sql];
+                              updatedSql[index] = { ...updatedSql[index], sql: e.target.value };
+                              setSchemaData({ ...schemaData, sql: updatedSql });
+                            }}
+                            rows="4"
+                            className="sql-editor"
+                          />
+                          <div className="edit-actions">
+                            <button
+                              className="btn btn-success btn-small"
+                              onClick={() => setEditingSql(null)}
+                              disabled={isLoading}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <pre className="sql-code">{item.sql}</pre>
+                      )}
                     </div>
                   </div>
                 </div>

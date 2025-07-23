@@ -259,8 +259,20 @@ const Dashboard = () => {
 
   const handleClearCache = () => {
     if (confirm('确定要清除所有缓存的图表吗？此操作不可撤销。')) {
+      // Clear Dashboard cache
       localStorage.removeItem('dashboardContainers')
       localStorage.removeItem('dashboardTransform')
+      
+      // Clear all chart cache (all keys starting with 'chart_')
+      const keysToRemove = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && key.startsWith('chart_')) {
+          keysToRemove.push(key)
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key))
+      
       setContainers([])
       setCanvasTransform({ x: 0, y: 0, scale: 1 })
     }
