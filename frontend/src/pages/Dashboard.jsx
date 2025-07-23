@@ -327,7 +327,7 @@ const Dashboard = () => {
           
           {showDialog && (
             <div 
-              className="input-dialog"
+              className="input-dialog apple-style"
               style={{
                 left: dialogPosition.x,
                 top: dialogPosition.y,
@@ -335,17 +335,48 @@ const Dashboard = () => {
               }}
               onClick={(e) => e.stopPropagation()}
             >
+              <div className="dialog-header">
+                <button className="dialog-close-btn" onClick={handleCloseDialog}>
+                  ✕
+                </button>
+                <div className="dialog-title">AI 可视化助手</div>
+                <div className="dialog-header-spacer"></div>
+              </div>
               <div className="dialog-content">
-                <h3>输入您的可视化需求</h3>
-                <textarea
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  placeholder="例如：创建一个显示最近6个月销售数据的柱状图..."
-                  rows={3}
-                />
-                <div className="dialog-buttons">
-                  <button onClick={handleSubmit}>提交</button>
-                  <button onClick={handleCloseDialog}>取消</button>
+                <div className="chat-messages">
+                  <div className="assistant-message">
+                    <div className="message-avatar">🤖</div>
+                    <div className="message-content">
+                      <div className="message-bubble assistant">
+                        你好！我是你的AI可视化助手。请告诉我你想要创建什么样的图表？
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="chat-input-container">
+                  <div className="chat-input-wrapper">
+                    <textarea
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      placeholder="描述你想要的图表，例如：创建一个显示最近6个月销售数据的柱状图..."
+                      rows={3}
+                      className="chat-input"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                          handleSubmit()
+                        }
+                      }}
+                    />
+                    <button 
+                      className="send-button" 
+                      onClick={handleSubmit}
+                      disabled={!userInput.trim()}
+                      title="发送"
+                    >
+                      ➤
+                    </button>
+                  </div>
+                  <div className="input-hint">按 ⌘+Enter 发送</div>
                 </div>
               </div>
             </div>
