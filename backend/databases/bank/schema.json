@@ -1,0 +1,38 @@
+{
+  "database_name": "bank",
+  "tables": {
+    "零售贷款": "CREATE TABLE `零售贷款` (\n    `数据日期` TEXT,\n    `机构号` INTEGER,\n    `机构名称` TEXT,\n    `零售贷款总额` INTEGER,\n    `按揭贷款总额` REAL,\n    `一手按揭总额` REAL,\n    `二手按揭总额` REAL,\n    `消费贷款总额` REAL\n);",
+    "资产负债": "CREATE TABLE `资产负债` (\n    `数据日期` TEXT,\n    `机构号` INTEGER,\n    `机构名称` TEXT,\n    `资产总额` INTEGER,\n    `客户贷款总额` INTEGER,\n    `同业资产总额` INTEGER,\n    `其他资产总额` INTEGER,\n    `负债总额` INTEGER,\n    `客户存款总额` INTEGER,\n    `同业负债总额` INTEGER,\n    `其他负债总额` INTEGER,\n    `客户总数` INTEGER,\n    `个人客户数` INTEGER,\n    `公司客户数` INTEGER,\n    `同业客户数` INTEGER,\n    `员工总数` INTEGER\n);",
+    "贷款总额": "CREATE TABLE `贷款总额` (\n    `数据日期` TEXT,\n    `机构号` INTEGER,\n    `机构名称` TEXT,\n    `客户贷款总额` INTEGER,\n    `实质性贷款总额` INTEGER,\n    `公司贷款总额` INTEGER,\n    `普惠小微贷款总额` INTEGER,\n    `零售贷款总额` INTEGER,\n    `信用卡贷款总额` INTEGER,\n    `中小额贷款总额` INTEGER,\n    `大额贷款总额` INTEGER,\n    `中小额公司贷款总额` INTEGER,\n    `大额公司贷款总额` INTEGER,\n    `贴现总额` INTEGER,\n    `直贴总额` INTEGER,\n    `转贴总额` INTEGER\n);",
+    "存款总额": "CREATE TABLE `存款总额` (\n    `数据日期` TEXT,\n    `机构号` INTEGER,\n    `机构名称` TEXT,\n    `客户存款总额` INTEGER,\n    `公司存款总额` INTEGER,\n    `活期公司存款总额` INTEGER,\n    `定期公司存款总额` INTEGER,\n    `零售存款总额` INTEGER,\n    `活期零售存款总额` INTEGER,\n    `定期零售存款总额` INTEGER\n);"
+  },
+  "sql": [
+    {
+      "question": "2025年各机构的客户贷款总额",
+      "sql": "SELECT `机构名称`, `客户贷款总额`\nFROM `贷款总额`\nWHERE `数据日期` > '2025-01-01 00:00:00'\nAND `数据日期` < '2025-12-31 23:59:59'"
+    },
+    {
+      "question": "2025年各机构的零售贷款总额",
+      "sql": "SELECT `机构名称`, `零售贷款总额`\nFROM `零售贷款`\nWHERE `数据日期` > '2025-01-01 00:00:00'\nAND `数据日期` < '2025-12-31 23:59:59'"
+    },
+    {
+      "question": "2025年各机构的客户存款总额",
+      "sql": "SELECT `机构名称`, `客户存款总额`\nFROM `存款总额`\nWHERE `数据日期` > '2025-01-01 00:00:00'\nAND `数据日期` < '2025-12-31 23:59:59'"
+    },
+    {
+      "question": "2025年各机构的资产总额",
+      "sql": "SELECT `机构名称`, `资产总额`\nFROM `资产负债`\nWHERE `数据日期` > '2025-01-01 00:00:00'\nAND `数据日期` < '2025-12-31 23:59:59'"
+    },
+    {
+      "question": "2024年12月各机构的客户贷款总额",
+      "sql": "SELECT `机构名称`, `客户贷款总额`\nFROM `贷款总额`\nWHERE `数据日期` BETWEEN '2024-12-01 00:00:00' AND '2024-12-31 23:59:59'"
+    },
+    {
+      "question": "2024年下半年各机构的客户贷款总额",
+      "sql": "SELECT `机构名称`, SUM(`客户贷款总额`) as `客户贷款总额`\nFROM `贷款总额`\nWHERE `数据日期` BETWEEN '2024-07-01 00:00:00' AND '2024-12-31 23:59:59'\nGROUP BY `机构名称`",
+      "added_at": "2025-07-23T18:37:25.147778"
+    }
+  ],
+  "created_at": "2025-07-23T16:15:11.886138",
+  "updated_at": "2025-07-23T18:37:25.147794"
+}

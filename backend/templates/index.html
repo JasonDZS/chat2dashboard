@@ -32,18 +32,24 @@
             font-weight: bold;
             color: #555;
         }
-        textarea {
+        textarea, select {
             width: 100%;
             padding: 12px;
             border: 2px solid #ddd;
             border-radius: 4px;
-            resize: vertical;
             font-family: Arial, sans-serif;
             font-size: 14px;
         }
-        textarea:focus {
+        textarea {
+            resize: vertical;
+        }
+        textarea:focus, select:focus {
             border-color: #007bff;
             outline: none;
+        }
+        select {
+            background-color: white;
+            cursor: pointer;
         }
         button {
             background-color: #007bff;
@@ -55,8 +61,12 @@
             font-size: 16px;
             width: 100%;
         }
-        button:hover {
+        button:hover:not(:disabled) {
             background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
         }
         .example {
             margin-top: 20px;
@@ -81,18 +91,78 @@
         <h1>Data Visualization Agent</h1>
         <form action="/generate" method="post" target="_blank">
             <div class="form-group">
-                <label for="query">Describe the visualization you want to create:</label>
-                <textarea id="query" name="query" rows="4" placeholder="Example: Create a bar chart showing sales data for the last 6 months" required></textarea>
+                <label for="db_name">Select Database:</label>
+                <select id="db_name" name="db_name" required>
+                    <option value="">Loading databases...</option>
+                </select>
             </div>
-            <button type="submit">Generate Visualization</button>
+            <div class="form-group">
+                <label for="query">Describe the visualization you want to create:</label>
+                <textarea id="query" name="query" rows="4" placeholder="Example: Show sales data for the last 6 months" required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="chart_type">Chart Type (optional - will auto-detect if not specified):</label>
+                <select id="chart_type" name="chart_type">
+                    <option value="">Auto-detect from query</option>
+                    <option value="bar">Bar Chart</option>
+                    <option value="line">Line Chart</option>
+                    <option value="pie">Pie Chart</option>
+                    <option value="scatter">Scatter Plot</option>
+                    <option value="area">Area Chart</option>
+                </select>
+            </div>
+            <button type="submit" id="submit-btn" disabled>Generate Visualization</button>
         </form>
         
         <div class="example">
             <h3>Example Queries:</h3>
-            <p>"Create a line chart showing temperature trends over time"</p>
-            <p>"Generate a pie chart displaying market share by company"</p>
-            <p>"Show a scatter plot of price vs quality ratings"</p>
+            <p>"Show sales data for the last 6 months" (auto-detects as bar chart)</p>
+            <p>"Sales trends over time" (auto-detects as line chart)</p>
+            <p>"Market share by company" (auto-detects as pie chart)</p>
+            <p>"Price vs quality correlation" (auto-detects as scatter plot)</p>
         </div>
     </div>
+    
+    <script>
+        // Load databases on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDatabases();
+            
+            // Enable submit button when database is selected
+            const dbSelect = document.getElementById('db_name');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            dbSelect.addEventListener('change', function() {
+                submitBtn.disabled = !this.value;
+            });
+        });
+        
+        async function loadDatabases() {
+            try {
+                const response = await fetch('/databases');
+                const databases = await response.json();
+                
+                const dbSelect = document.getElementById('db_name');
+                dbSelect.innerHTML = '<option value="">Select a database...</option>';
+                
+                databases.forEach(db => {
+                    const option = document.createElement('option');
+                    option.value = db.name;
+                    option.textContent = `${db.name} (${db.table_count} tables)`;
+                    dbSelect.appendChild(option);
+                });
+                
+                // Auto-select first database if available
+                if (databases.length > 0) {
+                    dbSelect.value = databases[0].name;
+                    document.getElementById('submit-btn').disabled = false;
+                }
+            } catch (error) {
+                console.error('Failed to load databases:', error);
+                const dbSelect = document.getElementById('db_name');
+                dbSelect.innerHTML = '<option value="">Error loading databases</option>';
+            }
+        }
+    </script>
 </body>
 </html>
