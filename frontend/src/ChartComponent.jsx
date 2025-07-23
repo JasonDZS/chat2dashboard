@@ -169,7 +169,7 @@ const ChartComponent = ({ userInput }) => {
 
   return (
     <div style={{ padding: '10px', background: 'white', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <h3 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '14px', textAlign: 'center' }}>
+      <h3 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '12px', textAlign: 'center', lineHeight: '1.2' }}>
         {chartTitle} - {userInput}
       </h3>
       

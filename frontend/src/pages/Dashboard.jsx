@@ -312,8 +312,19 @@ const Dashboard = () => {
                 width: container.width,
                 height: container.height
               }}
-              onMouseDown={(e) => handleMouseDown(e, container.id)}
             >
+              <div 
+                className="container-header"
+                onMouseDown={(e) => handleMouseDown(e, container.id)}
+                title="拖拽移动容器"
+              >
+                <div className="container-title">
+                  📊 图表
+                </div>
+                <div className="drag-indicator">
+                  ⋮⋮
+                </div>
+              </div>
               <div className="container-content">
                 <ChartComponent userInput={container.userInput} />
               </div>
