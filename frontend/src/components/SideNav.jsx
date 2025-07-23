@@ -8,6 +8,7 @@ const SideNav = () => {
     { path: '/dashboard', label: '仪表板', icon: '📊' },
     { path: '/analytics', label: '数据分析', icon: '📈' },
     { path: '/reports', label: '报表', icon: '📋' },
+    { path: '/data', label: '数据管理', icon: '💾' },
     { path: '/settings', label: '设置', icon: '⚙️' }
   ]
 
