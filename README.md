@@ -3,8 +3,7 @@
 A powerful web application that converts natural language queries into beautiful, interactive data visualizations through AI. Create multiple charts on a canvas, arrange them as needed, and build comprehensive dashboards through simple conversation.
 
 
-https://github.com/user-attachments/assets/c2ec5d9e-17bd-4404-b215-a06e6ef79e00
-
+<video src="https://github.com/user-attachments/assets/c2ec5d9e-17bd-4404-b215-a06e6ef79e00"></video>
 
 
 ## 🚀 Features
