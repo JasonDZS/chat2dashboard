@@ -16,8 +16,8 @@
 
 .main-content {
   flex: 1;
-  margin-left: 250px;
-  margin-top: 60px;
+  margin-left: 280px;
+  margin-top: 64px;
   display: flex;
   flex-direction: column;
   background: #f8f9fa;
