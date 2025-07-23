@@ -43,7 +43,11 @@ const TopNav = () => {
   return (
     <nav className="top-nav">
       <div className="nav-brand">
-        <h1>Chat2Dashboard</h1>
+        <h1>
+          <span style={{color: '#E2E8F0'}}>Chat</span>
+          <span style={{color: '#00FFAB'}}>2</span>
+          <span style={{color: '#E2E8F0'}}>DashBoard</span>
+        </h1>
         <div className="backend-status">
           <span 
             className={`status-indicator ${backendStatus}`}
@@ -61,12 +65,12 @@ const TopNav = () => {
         >
           仪表板
         </Link>
-        <Link 
-          to="/analytics" 
-          className={location.pathname === '/analytics' ? 'active' : ''}
-        >
-          分析
-        </Link>
+        {/*<Link */}
+        {/*  to="/analytics" */}
+        {/*  className={location.pathname === '/analytics' ? 'active' : ''}*/}
+        {/*>*/}
+        {/*  分析*/}
+        {/*</Link>*/}
         <Link 
           to="/settings" 
           className={location.pathname === '/settings' ? 'active' : ''}
