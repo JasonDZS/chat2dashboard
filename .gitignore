@@ -36,3 +36,4 @@ dist-ssr
 .claude/
 .venv/
 *.db
+!/backend/databases/

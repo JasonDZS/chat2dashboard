@@ -20,7 +20,7 @@ const generateCacheKey = (input) => {
   }
 }
 
-const ChartComponent = ({ userInput }) => {
+const ChartComponent = ({ userInput, dbName, chartType }) => {
   const chartRef = useRef(null)
   const [chartOption, setChartOption] = useState(null)
   const [chartTitle, setChartTitle] = useState('')
@@ -30,10 +30,10 @@ const ChartComponent = ({ userInput }) => {
 
   useEffect(() => {
     const generateChart = async () => {
-      if (!userInput.trim()) return
+      if (!userInput.trim() || !dbName) return
       
-      // Check cache first
-      const cacheKey = generateCacheKey(userInput)
+      // Check cache first (include dbName and chartType in cache key for uniqueness)
+      const cacheKey = generateCacheKey(`${userInput}_${dbName}_${chartType || 'auto'}`)
       const cachedData = localStorage.getItem(cacheKey)
       
       if (cachedData) {
@@ -55,6 +55,10 @@ const ChartComponent = ({ userInput }) => {
         // Call backend API to generate visualization
         const formData = new FormData()
         formData.append('query', userInput)
+        formData.append('db_name', dbName)
+        if (chartType) {
+          formData.append('chart_type', chartType)
+        }
         
         const response = await fetch(`${backendUrl}/generate`, {
           method: 'POST',
@@ -121,7 +125,7 @@ const ChartComponent = ({ userInput }) => {
             
             // Cache the chart data
             try {
-              const cacheKey = generateCacheKey(userInput)
+              const cacheKey = generateCacheKey(`${userInput}_${dbName}_${chartType || 'auto'}`)
               const cacheData = { option, title }
               localStorage.setItem(cacheKey, JSON.stringify(cacheData))
             } catch (cacheError) {
@@ -148,7 +152,7 @@ const ChartComponent = ({ userInput }) => {
     }
 
     generateChart()
-  }, [userInput, backendUrl])
+  }, [userInput, dbName, chartType, backendUrl])
 
   useEffect(() => {
     if (!chartRef.current || !chartOption) return
@@ -171,6 +175,9 @@ const ChartComponent = ({ userInput }) => {
     <div style={{ padding: '10px', background: 'white', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '12px', textAlign: 'center', lineHeight: '1.2' }}>
         {chartTitle} - {userInput}
+        <div style={{ fontSize: '10px', color: '#666', marginTop: '4px' }}>
+          数据库: {dbName} {chartType ? `| 图表类型: ${chartType}` : ''}
+        </div>
       </h3>
       
       {loading && (

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import ChartComponent from '../ChartComponent.jsx'
+import { useBackend } from '../context/BackendContext'
 import './Dashboard.css'
 
 const Dashboard = () => {
@@ -7,6 +8,9 @@ const Dashboard = () => {
   const [showDialog, setShowDialog] = useState(false)
   const [dialogPosition, setDialogPosition] = useState({ x: 0, y: 0 })
   const [userInput, setUserInput] = useState('')
+  const [selectedDatabase, setSelectedDatabase] = useState('')
+  const [selectedChartType, setSelectedChartType] = useState('')
+  const [availableDatabases, setAvailableDatabases] = useState([])
   const [dragging, setDragging] = useState(null)
   const [resizing, setResizing] = useState(null)
   const [selectedContainer, setSelectedContainer] = useState(null)
@@ -14,6 +18,24 @@ const Dashboard = () => {
   const [canvasTransform, setCanvasTransform] = useState({ x: 0, y: 0, scale: 1 })
   const canvasRef = useRef(null)
   const canvasContainerRef = useRef(null)
+  const { backendUrl } = useBackend()
+
+  // Fetch available databases
+  const fetchDatabases = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/databases`)
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableDatabases(data.databases || [])
+        // Set first database as default if available
+        if (data.databases && data.databases.length > 0 && !selectedDatabase) {
+          setSelectedDatabase(data.databases[0].name)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch databases:', error)
+    }
+  }
 
   // Load cached dashboard data on mount
   useEffect(() => {
@@ -37,7 +59,8 @@ const Dashboard = () => {
     }
     
     loadDashboardData()
-  }, [])
+    fetchDatabases()
+  }, [backendUrl, selectedDatabase])
 
   // Auto-save dashboard data whenever containers or transform changes
   useEffect(() => {
@@ -77,7 +100,7 @@ const Dashboard = () => {
   }
 
   const handleSubmit = async () => {
-    if (!userInput.trim()) return
+    if (!userInput.trim() || !selectedDatabase) return
     
     const newContainer = {
       id: Date.now(),
@@ -85,17 +108,21 @@ const Dashboard = () => {
       y: dialogPosition.y,
       width: 800,
       height: 400,
-      userInput: userInput
+      userInput: userInput,
+      dbName: selectedDatabase,
+      chartType: selectedChartType
     }
     
     setContainers([...containers, newContainer])
     setShowDialog(false)
     setUserInput('')
+    setSelectedChartType('')
   }
 
   const handleCloseDialog = () => {
     setShowDialog(false)
     setUserInput('')
+    setSelectedChartType('')
   }
 
   const handleMouseDown = (e, containerId) => {
@@ -326,7 +353,11 @@ const Dashboard = () => {
                 </div>
               </div>
               <div className="container-content">
-                <ChartComponent userInput={container.userInput} />
+                <ChartComponent 
+                  userInput={container.userInput} 
+                  dbName={container.dbName || selectedDatabase}
+                  chartType={container.chartType}
+                />
               </div>
               <div 
                 className="resize-handle"
@@ -363,6 +394,56 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </div>
+                <div className="database-selection" style={{ 
+                  padding: '10px 20px', 
+                  borderTop: '1px solid #e0e0e0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <label style={{ fontSize: '12px', color: '#666', minWidth: '60px' }}>数据库:</label>
+                    <select
+                      value={selectedDatabase}
+                      onChange={(e) => setSelectedDatabase(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '4px 8px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      <option value="">选择数据库</option>
+                      {availableDatabases.map(db => (
+                        <option key={db.name} value={db.name}>
+                          {db.name} ({db.table_count || 0} 表)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <label style={{ fontSize: '12px', color: '#666', minWidth: '60px' }}>图表类型:</label>
+                    <select
+                      value={selectedChartType}
+                      onChange={(e) => setSelectedChartType(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '4px 8px',
+                        border: '1px solid #ddd',
+                        borderRadius: '4px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      <option value="">自动推断</option>
+                      <option value="bar">柱状图</option>
+                      <option value="line">折线图</option>
+                      <option value="pie">饼图</option>
+                      <option value="scatter">散点图</option>
+                      <option value="area">面积图</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="chat-input-container">
                   <div className="chat-input-wrapper">
                     <textarea
@@ -380,8 +461,8 @@ const Dashboard = () => {
                     <button 
                       className="send-button" 
                       onClick={handleSubmit}
-                      disabled={!userInput.trim()}
-                      title="发送"
+                      disabled={!userInput.trim() || !selectedDatabase}
+                      title={!selectedDatabase ? "请先选择数据库" : "发送"}
                     >
                       ➤
                     </button>
