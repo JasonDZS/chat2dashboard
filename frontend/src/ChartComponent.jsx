@@ -2,6 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 import { useBackend } from './context/BackendContext'
 
+// Utility function to generate safe cache keys for Unicode strings
+const generateCacheKey = (input) => {
+  try {
+    // Use a combination of encoding methods for robust Unicode support
+    const encoded = encodeURIComponent(input).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16))
+    return `chart_${encoded}`
+  } catch {
+    // Fallback to simple hash if encoding fails
+    let hash = 0
+    for (let i = 0; i < input.length; i++) {
+      const char = input.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash // Convert to 32-bit integer
+    }
+    return `chart_${hash}`
+  }
+}
+
 const ChartComponent = ({ userInput }) => {
   const chartRef = useRef(null)
   const [chartOption, setChartOption] = useState(null)
@@ -13,6 +31,22 @@ const ChartComponent = ({ userInput }) => {
   useEffect(() => {
     const generateChart = async () => {
       if (!userInput.trim()) return
+      
+      // Check cache first
+      const cacheKey = generateCacheKey(userInput)
+      const cachedData = localStorage.getItem(cacheKey)
+      
+      if (cachedData) {
+        try {
+          const { option, title } = JSON.parse(cachedData)
+          setChartOption(option)
+          setChartTitle(title)
+          return
+        } catch (error) {
+          console.error('Failed to load cached chart data:', error)
+          // Continue to generate new chart if cache is corrupted
+        }
+      }
       
       setLoading(true)
       setError(null)
@@ -77,14 +111,22 @@ const ChartComponent = ({ userInput }) => {
             }
             
             // Remove title from option since we show it separately
+            const title = option.title ? (option.title.text || '图表') : 'AI生成图表'
             if (option.title) {
-              setChartTitle(option.title.text || '图表')
               delete option.title
-            } else {
-              setChartTitle('AI生成图表')
             }
             
+            setChartTitle(title)
             setChartOption(option)
+            
+            // Cache the chart data
+            try {
+              const cacheKey = generateCacheKey(userInput)
+              const cacheData = { option, title }
+              localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+            } catch (cacheError) {
+              console.error('Failed to cache chart data:', cacheError)
+            }
           } catch (parseError) {
             console.error('Failed to parse chart option:', parseError)
             throw parseError
