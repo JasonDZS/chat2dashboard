@@ -240,6 +240,7 @@ If you encounter any issues or have questions:
 1. Check the [Issues](https://github.com/JasonDZS/chat2dashboard/issues) page
 2. Create a new issue with detailed description
 3. Include steps to reproduce any bugs
+4. Discuss ideas in the [Discussions](https://github.com/JasonDZS/chat2dashboard/discussions) page
 
 ## 🙏 Acknowledgments
 
