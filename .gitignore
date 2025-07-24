@@ -38,4 +38,4 @@ dist-ssr
 *.db
 databases/
 logs/
-.env
+!/backend/.env
