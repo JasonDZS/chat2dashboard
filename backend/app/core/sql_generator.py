@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import openai
 from .agent import DBAgent
+from ..config import settings
 
 
 class SQLGenerator:
@@ -26,8 +27,8 @@ class SQLGenerator:
         
         # 初始化AI客户端
         self.client = openai.Client(
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-            base_url=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE,
         )
     
     def load_schema(self) -> Dict[str, Any]:
@@ -95,11 +96,11 @@ class SQLGenerator:
         
         try:
             response = self.client.chat.completions.create(
-                model="Qwen/Qwen2.5-72B-Instruct",
+                model=settings.LLM_MODEL,
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
+                temperature=0.7,  # Use slightly higher temperature for question generation
                 max_tokens=1024
             )
             

@@ -8,6 +8,7 @@ from vanna.openai import OpenAI_Chat
 from vanna.chromadb import ChromaDB_VectorStore
 
 from .html_generator.models import ProcessedData, DataPoint, ChartType
+from ..config import settings
 
 
 class MyVanna(ChromaDB_VectorStore, OpenAI_Chat):
@@ -32,7 +33,8 @@ class DBAgent:
         self.dbname = dbname
         self.is_trained = False
         client = openai.Client(
-            api_key = os.getenv("OPENAI_API_KEY"), base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE
         )
         # Set cache path for this specific database
         cache_path = os.path.join("databases", dbname, "cache")
@@ -40,10 +42,10 @@ class DBAgent:
         
         self.vn = MyVanna(
             client=client,
-            config = {
-                'model': 'Qwen/Qwen2.5-72B-Instruct',
-                'temperature': 0.0,
-                'max_tokens': 2048,
+            config={
+                'model': settings.LLM_MODEL,
+                'temperature': settings.LLM_TEMPERATURE,
+                'max_tokens': settings.LLM_MAX_TOKENS,
                 'path': cache_path
             }
         )
