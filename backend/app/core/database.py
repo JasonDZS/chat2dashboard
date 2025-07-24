@@ -25,6 +25,34 @@ from .exceptions import (
 class DatabaseManager:
     
     @staticmethod
+    def create_schema_json(db_name: str, table_creation_sql: Dict[str, str]) -> str:
+        """Create schema.json file for a database
+        
+        Args:
+            db_name (str): Database name
+            table_creation_sql (Dict[str, str]): Table name to CREATE SQL mapping
+            
+        Returns:
+            str: Path to created schema.json file
+        """
+        db_folder = os.path.join(settings.DATABASES_DIR, db_name)
+        schema_file = os.path.join(db_folder, "schema.json")
+        
+        schema_data = {
+            "database_name": db_name,
+            "tables": table_creation_sql,
+            "sql": [],
+            "documents": [],
+            "created_at": datetime.datetime.now().isoformat()
+        }
+        # TODO: 实现SQL和document生成的逻辑
+        
+        with open(schema_file, 'w', encoding='utf-8') as f:
+            json.dump(schema_data, f, indent=2, ensure_ascii=False)
+        
+        return schema_file
+    
+    @staticmethod
     def create_database_from_files(files: List[UploadFile], db_name: str) -> Tuple[List[TableInfo], str]:
         """Create SQLite database from xlsx or csv files"""
         # Check if we need pandas for any file type
@@ -87,16 +115,8 @@ class DatabaseManager:
         
         conn.close()
         
-        # Create JSON file with table creation statements
-        schema_file = os.path.join(db_folder, "schema.json")
-        with open(schema_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "database_name": db_name,
-                "tables": table_creation_sql,
-                "sql": [],
-                "documents": [],
-                "created_at": datetime.datetime.now().isoformat()
-            }, f, indent=2, ensure_ascii=False)
+        # Create schema.json file using separate method
+        DatabaseManager.create_schema_json(db_name, table_creation_sql)
         
         return created_tables, db_path
     
