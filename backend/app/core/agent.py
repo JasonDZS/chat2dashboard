@@ -2,12 +2,10 @@ import os
 from functools import lru_cache
 from typing import Dict, Any, List
 
-import pandas as pd
 import openai
 from vanna.openai import OpenAI_Chat
 from vanna.chromadb import ChromaDB_VectorStore
 
-from .html_generator.models import ProcessedData, DataPoint, ChartType
 from ..config import settings
 
 
@@ -101,133 +99,6 @@ class DBAgent:
             "data": data
         }
 
-    def to_processed_data(self, question: str, chart_type: str = "bar") -> ProcessedData:
-        """
-        Converts DBAgent query result to ProcessedData format for HTML generation.
-
-        Args:
-            question (str): The question to ask the DBAgent.
-            chart_type (str): The chart type to use ("bar", "line", "pie", "scatter", "area").
-
-        Returns:
-            ProcessedData: Formatted data ready for HTML generation.
-        """
-        result = self.ask(question)
-        df = result["data"]
-        
-        # Convert DataFrame to DataPoint list
-        sample_data = []
-        
-        if isinstance(df, pd.DataFrame) and not df.empty:
-            # Get column names
-            columns = df.columns.tolist()
-            
-            # Handle scatter chart differently - requires x,y coordinates
-            if chart_type.lower() == "scatter":
-                if len(columns) >= 2:
-                    # Use first two columns as x and y coordinates
-                    x_col, y_col = columns[0], columns[1]
-                    
-                    for idx, row in df.iterrows():
-                        x_val = row[x_col]
-                        y_val = row[y_col]
-                        
-                        # Smart conversion for x coordinate
-                        try:
-                            if pd.notna(x_val):
-                                if isinstance(x_val, str):
-                                    # Try to parse as datetime first
-                                    try:
-                                        x_numeric = pd.to_datetime(x_val).timestamp()
-                                    except:
-                                        # If not datetime, use row index as fallback
-                                        x_numeric = float(idx)
-                                else:
-                                    x_numeric = float(x_val)
-                            else:
-                                x_numeric = float(idx)
-                        except:
-                            x_numeric = float(idx)
-                        
-                        # Smart conversion for y coordinate
-                        try:
-                            if pd.notna(y_val):
-                                if isinstance(y_val, str):
-                                    # Try to parse as datetime
-                                    try:
-                                        y_numeric = pd.to_datetime(y_val).timestamp()
-                                    except:
-                                        # If not datetime and not numeric, use 0
-                                        y_numeric = 0.0
-                                else:
-                                    y_numeric = float(y_val)
-                            else:
-                                y_numeric = 0.0
-                        except:
-                            y_numeric = 0.0
-                        
-                        sample_data.append(DataPoint(
-                            x=x_numeric,
-                            y=y_numeric,
-                            name=f"({x_val}, {y_val})"
-                        ))
-                elif len(columns) == 1:
-                    # Single column - use index as x and column as y
-                    y_col = columns[0]
-                    for idx, row in df.iterrows():
-                        y_val = row[y_col]
-                        
-                        # Smart conversion for y coordinate
-                        try:
-                            if pd.notna(y_val):
-                                if isinstance(y_val, str):
-                                    try:
-                                        y_numeric = pd.to_datetime(y_val).timestamp()
-                                    except:
-                                        y_numeric = 0.0
-                                else:
-                                    y_numeric = float(y_val)
-                            else:
-                                y_numeric = 0.0
-                        except:
-                            y_numeric = 0.0
-                        
-                        sample_data.append(DataPoint(
-                            x=float(int(idx)) if isinstance(idx, (int, float)) else float(hash(idx)),
-                            y=y_numeric,
-                            name=f"({idx}, {y_val})"
-                        ))
-            else:
-                # Handle other chart types (bar, line, pie, area)
-                if len(columns) >= 2:
-                    # Use first column as name and second as value
-                    name_col, value_col = columns[0], columns[1]
-                    
-                    for _, row in df.iterrows():
-                        sample_data.append(DataPoint(
-                            name=str(row[name_col]),
-                            value=float(row[value_col]) if pd.notna(row[value_col]) else 0.0
-                        ))
-                elif len(columns) == 1:
-                    # Single column - use index as name and column as value
-                    value_col = columns[0]
-                    for idx, row in df.iterrows():
-                        sample_data.append(DataPoint(
-                            name=str(idx),
-                            value=float(row[value_col]) if pd.notna(row[value_col]) else 0.0
-                        ))
-        
-        # Validate chart_type
-        try:
-            chart_type_enum = ChartType(chart_type.lower())
-        except ValueError:
-            chart_type_enum = ChartType.BAR
-        print(chart_type_enum, sample_data, question)
-        return ProcessedData(
-            chart_type=chart_type_enum,
-            sample_data=sample_data,
-            original_query=question
-        )
 
 
 @lru_cache(maxsize = 100)
