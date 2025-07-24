@@ -347,8 +347,7 @@ docker run -p 8000:8000 -e OPENAI_API_KEY=your_key chat2dashboard
 
 ## 📞 获取帮助
 
-- **Issue 报告**: [GitHub Issues](https://github.com/your-org/chat2dashboard/issues)
-- **功能请求**: [GitHub Discussions](https://github.com/your-org/chat2dashboard/discussions)
+- **Issue 报告**: [GitHub Issues](https://github.com/JasonDZS/chat2dashboard/issues)
 - **项目文档**: 查看 `docs/` 目录下的其他文档
 
 ## 📄 许可证
