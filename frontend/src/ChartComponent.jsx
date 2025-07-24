@@ -159,11 +159,6 @@ const ChartComponent = ({ userInput, dbName, chartType }) => {
     }
 
     generateChart()
-    
-    // Cleanup function to reset flag when dependencies change
-    return () => {
-      isGeneratingRef.current = false
-    }
   }, [userInput, dbName, chartType, backendUrl])
 
   useEffect(() => {

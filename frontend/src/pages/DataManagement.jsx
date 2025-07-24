@@ -27,7 +27,7 @@ function DataManagement() {
     formData.append('db_name', dbName)
 
     try {
-      const response = await fetch(`${backendUrl}/upload-xlsx`, {
+      const response = await fetch(`${backendUrl}/upload-files`, {
         method: 'POST',
         body: formData
       })
@@ -73,7 +73,7 @@ function DataManagement() {
     <div className="data-management">
       <div className="data-management-header">
         <h1>数据管理</h1>
-        <p>上传 Excel 文件并预览数据结构</p>
+        <p>上传 Excel 或 CSV 文件并预览数据结构</p>
       </div>
 
       <div className="upload-section">
@@ -93,12 +93,12 @@ function DataManagement() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="file-input">选择文件 (.xlsx)</label>
+            <label htmlFor="file-input">选择文件 (.xlsx, .csv)</label>
             <input
               id="file-input"
               type="file"
               multiple
-              accept=".xlsx"
+              accept=".xlsx,.csv"
               onChange={handleFileChange}
               className="form-file-input"
             />
