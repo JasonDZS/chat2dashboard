@@ -75,9 +75,7 @@ yarn install
 **后端服务器**:
 ```bash
 cd backend
-uv run python start.py
-# 或
-uv run python app/main.py
+uv run python main.py
 ```
 - API 服务: http://localhost:8000
 - Web 界面: http://localhost:8000
@@ -283,15 +281,6 @@ cd frontend && npm run build
 
 # 启动后端 (生产模式)
 cd backend && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### Docker 部署
-```bash
-# 构建镜像
-docker build -t chat2dashboard .
-
-# 运行容器
-docker run -p 8000:8000 -e OPENAI_API_KEY=your_key chat2dashboard
 ```
 
 ## ❓ 常见问题
