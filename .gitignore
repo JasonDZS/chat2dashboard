@@ -39,3 +39,4 @@ dist-ssr
 databases/
 logs/
 !/backend/.env
+design.md

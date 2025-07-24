@@ -227,6 +227,8 @@ uv run python start.py     # Start with auto-install
 4. Push to the branch: `git push origin feature/amazing-feature`
 5. Open a Pull Request
 
+look details in the [CONTRIBUTING.md](docs/CONTRIBUTING.md) file.
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
