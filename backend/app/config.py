@@ -19,8 +19,11 @@ class Settings:
     CORS_CREDENTIALS: bool = False
     
     # OpenAI settings
+    # os.environ['OPENAI_API_BASE'] = 'https://one-api.s.metames.cn:38443/v1'
+    # os.environ['OPENAI_API_KEY'] = 'sk-NOwyBUae2bveENbN6d00D57612D349498057Df84CbAeA158'
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_API_BASE: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+
     
     # Database settings
     DATABASES_DIR: str = "databases"

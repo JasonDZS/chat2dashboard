@@ -3,6 +3,7 @@ import subprocess
 import sys
 import os
 
+
 def install_requirements():
     """Install required packages"""
     try:
@@ -29,8 +30,8 @@ if __name__ == "__main__":
     print("🎨 Data Visualization Agent Setup")
     print("=" * 40)
     
-    if install_requirements():
-        start_server()
-    else:
-        print("❌ Setup failed. Please check the error messages above.")
-        sys.exit(1)
+    # if install_requirements():
+    start_server()
+    # else:
+    #     print("❌ Setup failed. Please check the error messages above.")
+    #     sys.exit(1)
