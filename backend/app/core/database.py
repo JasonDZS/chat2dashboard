@@ -25,7 +25,7 @@ from .exceptions import (
 class DatabaseManager:
     
     @staticmethod
-    def create_schema_json(db_name: str, table_creation_sql: Dict[str, str]) -> str:
+    def create_schema_json(db_name: str, table_creation_sql: Dict[str, str],tables:List[TableInfo],conn:sqlite3.Connection) -> str:
         """Create schema.json file for a database
         
         Args:
@@ -35,23 +35,166 @@ class DatabaseManager:
         Returns:
             str: Path to created schema.json file
         """
-        db_folder = os.path.join(settings.DATABASES_DIR, db_name)
-        schema_file = os.path.join(db_folder, "schema.json")
-        
+<<<<<<< HEAD
+        # 生成sql语句
+        sql_statements = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
+
+        # 生成文档
+        documents = DatabaseManager.generate_documents(db_name, tables)
+
+=======
+        #生成sql语句
+        sql_statements = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
+
+        #生成文档
+        documents = DatabaseManager.generate_documents(db_name, tables)
+        #构建schema数据
+>>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
         schema_data = {
             "database_name": db_name,
             "tables": table_creation_sql,
-            "sql": [],
-            "documents": [],
+            "sql": sql_statements,
+            "documents": documents,
             "created_at": datetime.datetime.now().isoformat()
         }
-        # TODO: 实现SQL和document生成的逻辑
+
+<<<<<<< HEAD
+
+        # 保存文件
+        db_folder = os.path.join(settings.DATABASES_DIR, db_name)
+        schema_file = os.path.join(db_folder, "schema.json")
+
+=======
+        # 保存文件
+        db_folder = os.path.join(settings.DATABASES_DIR, db_name)
+        schema_file = os.path.join(db_folder, "schema.json")
         
+>>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
         with open(schema_file, 'w', encoding='utf-8') as f:
             json.dump(schema_data, f, indent=2, ensure_ascii=False)
         
         return schema_file
+
+    @staticmethod
+    def generate_sql_statements(table_creation_sql: Dict[str, str], conn: sqlite3.Connection) -> List[str]:
+        """生成有价值的SQL语句"""
+        sql_statements = []
+
+        for table_name, _ in table_creation_sql.items():
+            # 基础查询
+            sql_statements.append(f"SELECT * FROM {table_name} LIMIT 10;")
+            sql_statements.append(f"SELECT COUNT(*) AS total_rows FROM {table_name};")
+
+            # 获取表结构
+            cursor = conn.cursor()
+            cursor.execute(f"PRAGMA table_info({table_name});")
+            columns = cursor.fetchall()
+
+            # 为每列生成分析语句
+            for col in columns:
+                col_name = col[1]
+                col_type = col[2].upper()
+
+                if "INT" in col_type or "REAL" in col_type:
+                    # 数值型分析
+                    sql_statements.append(
+                        f"SELECT {col_name}, COUNT(*) AS count FROM {table_name} GROUP BY {col_name} ORDER BY count DESC;"
+                    )
+                    sql_statements.append(
+                        f"SELECT AVG({col_name}) AS avg_value, MIN({col_name}) AS min_value, MAX({col_name}) AS max_value FROM {table_name};"
+                    )
+                elif "TEXT" in col_type:
+                    # 文本型分析
+                    sql_statements.append(
+                        f"SELECT {col_name}, COUNT(*) AS count FROM {table_name} GROUP BY {col_name} ORDER BY count DESC LIMIT 10;"
+                    )
+                    sql_statements.append(
+                        f"SELECT LENGTH({col_name}) AS length, COUNT(*) AS count FROM {table_name} GROUP BY length;"
+                    )
+                elif "DATE" in col_type:
+                    # 时间型分析
+                    sql_statements.append(
+                        f"SELECT strftime('%Y-%m', {col_name}) AS month, COUNT(*) AS count FROM {table_name} GROUP BY month;"
+                    )
+
+        return sql_statements
+
+    @staticmethod
+    def generate_documents(db_name: str, tables: List[TableInfo]) -> List[Dict]:
+        """生成数据库文档"""
+        documents = []
+
+        # 数据库概览
+        documents.append({
+            "type": "database_overview",
+            "title": f"{db_name} 数据库概览",
+            "content": f"""
+               ## {db_name} 数据库
+
+               **创建时间**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
+               **包含表数**: {len(tables)}
+
+               ### 主要数据表:
+               {', '.join([t.table_name for t in tables])}
+               """
+        })
+
+        # 每表文档
+        for table in tables:
+            # 列描述
+            columns_desc = "\n".join([
+                f"- **{col}**: 数据类型待检测，建议分析方向..."
+                for col in table.columns
+            ])
+
+            documents.append({
+                "type": "table_schema",
+                "table": table.table_name,
+                "title": f"{table.table_name} 表结构",
+                "content": f"""
+                   ## {table.table_name}
+
+                   **来源文件**: {table.filename}
+                   **行数**: {table.rows:,}
+                   **列数**: {len(table.columns)}
+
+                   ### 字段列表:
+                   {columns_desc}
+
+                   ### 数据分析建议:
+                   1. 探索各字段的分布情况
+                   2. 识别关键字段之间的关系
+                   3. 分析时间趋势（如果存在时间字段）
+                   """
+            })
+
+        # 分析指南
+        documents.append({
+            "type": "analysis_guide",
+            "title": "数据分析指南",
+            "content": """
+               ## 推荐分析方向
+
+               ### 1. 趋势分析
+               - 随时间变化的指标趋势
+               - 不同分类下的指标对比
+
+               ### 2. 分布分析
+               - 关键指标的分布情况
+               - 地理分布（如果包含位置数据）
+
+               ### 3. 相关性分析
+               - 不同字段间的相关性
+               - 影响因素分析
+               """
+        })
+
+        return documents
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
     @staticmethod
     def create_database_from_files(files: List[UploadFile], db_name: str) -> Tuple[List[TableInfo], str]:
         """Create SQLite database from xlsx or csv files"""
@@ -108,7 +251,13 @@ class DatabaseManager:
                     rows=len(df),
                     columns=list(df.columns)
                 ))
-        
+<<<<<<< HEAD
+            DatabaseManager.create_schema_json(db_name, table_creation_sql, created_tables, conn)  ##
+=======
+
+            DatabaseManager.create_schema_json(db_name, table_creation_sql, created_tables, conn)##
+>>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
+
         except Exception as e:
             conn.close()
             raise e
@@ -116,7 +265,10 @@ class DatabaseManager:
         conn.close()
         
         # Create schema.json file using separate method
-        DatabaseManager.create_schema_json(db_name, table_creation_sql)
+<<<<<<< HEAD
+=======
+
+>>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
         
         return created_tables, db_path
     
