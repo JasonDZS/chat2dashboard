@@ -35,21 +35,21 @@ class DatabaseManager:
         Returns:
             str: Path to created schema.json file
         """
-<<<<<<< HEAD
+
         # 生成sql语句
         sql_statements = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
 
         # 生成文档
         documents = DatabaseManager.generate_documents(db_name, tables)
 
-=======
+
         #生成sql语句
         sql_statements = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
 
         #生成文档
         documents = DatabaseManager.generate_documents(db_name, tables)
         #构建schema数据
->>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
+
         schema_data = {
             "database_name": db_name,
             "tables": table_creation_sql,
@@ -58,18 +58,16 @@ class DatabaseManager:
             "created_at": datetime.datetime.now().isoformat()
         }
 
-<<<<<<< HEAD
-
         # 保存文件
         db_folder = os.path.join(settings.DATABASES_DIR, db_name)
         schema_file = os.path.join(db_folder, "schema.json")
 
-=======
+
         # 保存文件
         db_folder = os.path.join(settings.DATABASES_DIR, db_name)
         schema_file = os.path.join(db_folder, "schema.json")
         
->>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
+
         with open(schema_file, 'w', encoding='utf-8') as f:
             json.dump(schema_data, f, indent=2, ensure_ascii=False)
         
@@ -190,11 +188,7 @@ class DatabaseManager:
         })
 
         return documents
-<<<<<<< HEAD
-    
-=======
 
->>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
     @staticmethod
     def create_database_from_files(files: List[UploadFile], db_name: str) -> Tuple[List[TableInfo], str]:
         """Create SQLite database from xlsx or csv files"""
@@ -251,12 +245,12 @@ class DatabaseManager:
                     rows=len(df),
                     columns=list(df.columns)
                 ))
-<<<<<<< HEAD
+
             DatabaseManager.create_schema_json(db_name, table_creation_sql, created_tables, conn)  ##
-=======
+
 
             DatabaseManager.create_schema_json(db_name, table_creation_sql, created_tables, conn)##
->>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
+
 
         except Exception as e:
             conn.close()
@@ -265,10 +259,7 @@ class DatabaseManager:
         conn.close()
         
         # Create schema.json file using separate method
-<<<<<<< HEAD
-=======
 
->>>>>>> 1879f3cce7919ec81806e5389538a82c29bafa79
         
         return created_tables, db_path
     
