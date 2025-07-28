@@ -31,29 +31,24 @@ class DatabaseManager:
         Args:
             db_name (str): Database name
             table_creation_sql (Dict[str, str]): Table name to CREATE SQL mapping
-            
+            tables: List of table information
+            conn:database connection (used for generating SQL statements)
         Returns:
             str: Path to created schema.json file
         """
 
         # 生成sql语句
-        sql_statements = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
+        sql_entries = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
 
         # 生成文档
         documents = DatabaseManager.generate_documents(db_name, tables)
 
-
-        #生成sql语句
-        sql_statements = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
-
-        #生成文档
-        documents = DatabaseManager.generate_documents(db_name, tables)
         #构建schema数据
 
         schema_data = {
             "database_name": db_name,
             "tables": table_creation_sql,
-            "sql": sql_statements,
+            "sql": sql_entries,
             "documents": documents,
             "created_at": datetime.datetime.now().isoformat()
         }
@@ -61,13 +56,7 @@ class DatabaseManager:
         # 保存文件
         db_folder = os.path.join(settings.DATABASES_DIR, db_name)
         schema_file = os.path.join(db_folder, "schema.json")
-
-
-        # 保存文件
-        db_folder = os.path.join(settings.DATABASES_DIR, db_name)
-        schema_file = os.path.join(db_folder, "schema.json")
         
-
         with open(schema_file, 'w', encoding='utf-8') as f:
             json.dump(schema_data, f, indent=2, ensure_ascii=False)
         
@@ -75,47 +64,100 @@ class DatabaseManager:
 
     @staticmethod
     def generate_sql_statements(table_creation_sql: Dict[str, str], conn: sqlite3.Connection) -> List[str]:
-        """生成有价值的SQL语句"""
-        sql_statements = []
+        """
+        生成有价值的SQL语句集合
+
+        返回格式: [{"question": "...", "sql": "...", "added_at": "..."}, ...]
+        """
+        sql_entries = []
+        current_time = datetime.datetime.now().isoformat()
 
         for table_name, _ in table_creation_sql.items():
-            # 基础查询
-            sql_statements.append(f"SELECT * FROM {table_name} LIMIT 10;")
-            sql_statements.append(f"SELECT COUNT(*) AS total_rows FROM {table_name};")
+            #基础查询 - 获取样本数据
+            sql = f"SELECT * FROM \"{table_name}\" LIMIT 10;"
+            question = f"获取表 '{table_name}' 的前10条样本数据"
+            sql_entries.append({
+                "question": question,
+                "sql": sql,
+                "added_at": current_time
+            })
 
-            # 获取表结构
-            cursor = conn.cursor()
-            cursor.execute(f"PRAGMA table_info({table_name});")
-            columns = cursor.fetchall()
+            #基础查询 - 统计总行数
+            sql = f"SELECT COUNT(*) AS total_rows FROM \"{table_name}\";"
+            question = f"统计表 '{table_name}' 的总行数"
+            sql_entries.append({
+                "question": question,
+                "sql": sql,
+                "added_at": current_time
+            })
 
-            # 为每列生成分析语句
-            for col in columns:
-                col_name = col[1]
-                col_type = col[2].upper()
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(f"PRAGMA table_info(\"{table_name}\")")
+                    columns = cursor.fetchall()
 
-                if "INT" in col_type or "REAL" in col_type:
-                    # 数值型分析
-                    sql_statements.append(
-                        f"SELECT {col_name}, COUNT(*) AS count FROM {table_name} GROUP BY {col_name} ORDER BY count DESC;"
-                    )
-                    sql_statements.append(
-                        f"SELECT AVG({col_name}) AS avg_value, MIN({col_name}) AS min_value, MAX({col_name}) AS max_value FROM {table_name};"
-                    )
-                elif "TEXT" in col_type:
-                    # 文本型分析
-                    sql_statements.append(
-                        f"SELECT {col_name}, COUNT(*) AS count FROM {table_name} GROUP BY {col_name} ORDER BY count DESC LIMIT 10;"
-                    )
-                    sql_statements.append(
-                        f"SELECT LENGTH({col_name}) AS length, COUNT(*) AS count FROM {table_name} GROUP BY length;"
-                    )
-                elif "DATE" in col_type:
-                    # 时间型分析
-                    sql_statements.append(
-                        f"SELECT strftime('%Y-%m', {col_name}) AS month, COUNT(*) AS count FROM {table_name} GROUP BY month;"
-                    )
+                    for col in columns:
+                        col_name = col[1]
+                        col_type = col[2].upper()
 
-        return sql_statements
+                        if "INT" in col_type or "REAL" in col_type:
+                            #数值型分析 - 分组统计
+                            sql = (
+                                f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" "
+                                f"GROUP BY \"{col_name}\" ORDER BY count DESC;"
+                            )
+                            question = f"按列 '{col_name}' 分组统计表 '{table_name}' 中的记录分布"
+                            sql_entries.append({
+                                "question": question,
+                                "sql": sql,
+                                "added_at": current_time
+                            })
+
+                            #数值型分析 - 基本统计量
+                            sql = (
+                                f"SELECT AVG(\"{col_name}\") AS avg_value, "
+                                f"MIN(\"{col_name}\") AS min_value, "
+                                f"MAX(\"{col_name}\") AS max_value "
+                                f"FROM \"{table_name}\";"
+                            )
+                            question = f"计算表 '{table_name}' 中列 '{col_name}' 的平均值、最小值和最大值"
+                            sql_entries.append({
+                                "question": question,
+                                "sql": sql,
+                                "added_at": current_time
+                            })
+
+                        elif "TEXT" in col_type:
+                            #文本型分析 - TOP 10 值
+                            sql = (
+                                f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" "
+                                f"GROUP BY \"{col_name}\" ORDER BY count DESC LIMIT 10;"
+                            )
+                            question = f"找出表 '{table_name}' 中列 '{col_name}' 最常见的10个值"
+                            sql_entries.append({
+                                "question": question,
+                                "sql": sql,
+                                "added_at": current_time
+                            })
+
+                            #文本型分析 - 长度分布
+                            sql = (
+                                f"SELECT LENGTH(\"{col_name}\") AS length, COUNT(*) AS count "
+                                f"FROM \"{table_name}\" GROUP BY length;"
+                            )
+                            question = f"分析表 '{table_name}' 中列 '{col_name}' 的文本长度分布"
+                            sql_entries.append({
+                                "question": question,
+                                "sql": sql,
+                                "added_at": current_time
+                            })
+
+                except sqlite3.Error:
+                    # 如果获取列信息失败，继续下一张表
+                    continue
+
+        return sql_entries
 
     @staticmethod
     def generate_documents(db_name: str, tables: List[TableInfo]) -> List[Dict]:
@@ -245,12 +287,8 @@ class DatabaseManager:
                     rows=len(df),
                     columns=list(df.columns)
                 ))
-
+            # Create schema.json file using separate method
             DatabaseManager.create_schema_json(db_name, table_creation_sql, created_tables, conn)  ##
-
-
-            DatabaseManager.create_schema_json(db_name, table_creation_sql, created_tables, conn)##
-
 
         except Exception as e:
             conn.close()
@@ -258,8 +296,6 @@ class DatabaseManager:
         
         conn.close()
         
-        # Create schema.json file using separate method
-
         
         return created_tables, db_path
     
