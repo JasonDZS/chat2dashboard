@@ -1,6 +1,8 @@
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from typing import List
+import os
+import shutil
 
 from ...core.database import DatabaseManager
 from ...core.exceptions import (
@@ -42,6 +44,56 @@ async def upload_data_files(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/upload-docs")
+async def upload_documents(
+    files: List[UploadFile] = File(...),
+    db_name: str = Form(...)
+):
+    """Upload document files (docx, pdf, markdown, txt) to database docs folder"""
+    try:
+        # Validate file types
+        allowed_extensions = {'.docx', '.pdf', '.md', '.markdown', '.txt'}
+        for file in files:
+            filename_lower = file.filename.lower()
+            if not any(filename_lower.endswith(ext) for ext in allowed_extensions):
+                raise UnsupportedFileTypeError(f"File type not supported: {file.filename}")
+        
+        # Check if database exists
+        databases = DatabaseManager.list_databases()
+        db_exists = any(db.name == db_name for db in databases)
+        if not db_exists:
+            raise DatabaseNotFoundError(f"Database '{db_name}' not found")
+        
+        # Create docs folder path
+        from ...config import settings
+        db_path = os.path.join(settings.database_path, db_name)
+        docs_path = os.path.join(db_path, "docs")
+        os.makedirs(docs_path, exist_ok=True)
+        
+        # Save uploaded files
+        saved_files = []
+        for file in files:
+            file_path = os.path.join(docs_path, file.filename)
+            with open(file_path, "wb") as buffer:
+                content = await file.read()
+                buffer.write(content)
+            saved_files.append(file.filename)
+        
+        return JSONResponse(content={
+            "message": "Documents uploaded successfully",
+            "database_name": db_name,
+            "docs_path": docs_path,
+            "uploaded_files": saved_files,
+            "total_files": len(saved_files)
+        })
+    
+    except (DatabaseNotFoundError, UnsupportedFileTypeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/schema/{db_name}", response_model=DatabaseSchema)
 async def get_database_schema(db_name: str):
