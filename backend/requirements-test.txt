@@ -1,0 +1,42 @@
+# 测试相关依赖包
+
+# 核心测试框架
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+pytest-cov==4.1.0
+pytest-xdist==3.3.1
+
+# HTTP测试客户端
+httpx==0.25.2
+
+# 覆盖率报告
+coverage==7.3.2
+
+# 测试工具
+factory-boy==3.3.0
+faker==19.12.0
+
+# 性能测试
+pytest-benchmark==4.0.0
+
+# 并发测试
+pytest-parallel==0.1.1
+
+# 数据库测试
+pytest-postgresql==5.0.0
+pytest-redis==3.0.2
+
+# Mock和存根
+responses==0.24.1
+freezegun==1.2.2
+
+# 测试报告
+pytest-html==4.1.1
+pytest-json-report==1.5.0
+
+# 代码质量
+flake8==6.1.0
+black==23.11.0
+isort==5.12.0
+mypy==1.7.1
