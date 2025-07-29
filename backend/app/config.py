@@ -28,10 +28,17 @@ class Settings:
     TEMPLATES_DIR: str = "templates"
     
     # Model settings
-    LLM_MODEL: str = "Qwen/Qwen2.5-72B-Instruct"
+    LLM_MODEL: str = "deepseek-ai/DeepSeek-V3"
     LLM_TEMPERATURE: float = 0.0
     LLM_MAX_TOKENS: int = 2048
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")  # Options: "openai", "hf", "ollama", "custom"
     
+    # Embedding settings
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "Pro/BAAI/bge-m3")
+    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "openai")  # Options: "openai", "hf", "ollama"
+    EMBEDDING_DIM: int = 1024  # Default dimension for BGE models
+    EMBEDDING_MAX_TOKEN_SIZE: int = 8192  # Default max token size for BGE models
+
     @property
     def database_path(self) -> str:
         return os.path.abspath(self.DATABASES_DIR)

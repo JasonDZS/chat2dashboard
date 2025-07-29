@@ -100,8 +100,8 @@ class SQLGenerator:
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,  # Use slightly higher temperature for question generation
-                max_tokens=1024
+                temperature=settings.LLM_TEMPERATURE,
+                max_tokens=settings.LLM_MAX_TOKENS
             )
             
             questions_text = response.choices[0].message.content.strip()

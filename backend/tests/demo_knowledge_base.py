@@ -377,10 +377,10 @@ async def demonstrate_backend_api():
         
         # 步骤5: 检查构建状态
         print(f"\n🔍 步骤5: 检查构建状态")
-        for i in range(10):  # 最多检查10次
+        for i in range(100):  # 最多检查10次
             try:
                 status = await tester.get_knowledge_base_status(kb_id)
-                print(f"  检查 {i+1}/10: {status}")
+                print(f"  检查 {i+1}/100: {status}")
                 
                 if status.get("status") == "ready":
                     print("✓ 知识库构建完成")

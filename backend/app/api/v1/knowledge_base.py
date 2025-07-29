@@ -48,13 +48,16 @@ async def create_knowledge_base(request: KnowledgeBaseCreateRequest):
         KnowledgeBaseResponse: 创建结果
     """
     try:
-        kb_id = str(uuid.uuid4())
+        kb_id = request.kb_id or str(uuid.uuid4())
         
         # 创建知识库目录结构
         kb_dir = f"{settings.DATABASES_DIR}/{kb_id}"
-        os.mkdir(kb_dir) if not os.path.exists(kb_dir) else None
-        docs_dir = f"{kb_dir}/docs"
-        os.mkdir(docs_dir) if not os.path.exists(docs_dir) else None
+        if os.path.exists(kb_dir):
+            logger.info(f"Knowledge base directory {kb_id} already exists, skipping folder creation")
+        else:
+            os.mkdir(kb_dir)
+            docs_dir = f"{kb_dir}/docs"
+            os.mkdir(docs_dir)
         
         # 保存知识库配置
         kb_config = {

@@ -12,9 +12,10 @@ import uuid
 
 try:
     from lightrag import LightRAG, QueryParam
-    from lightrag.llm.openai import gpt_4o_mini_complete, gpt_4o_complete, openai_embed
+    from lightrag.llm.openai import gpt_4o_mini_complete, gpt_4o_complete, openai_embed, openai_complete_if_cache
     from lightrag.kg.shared_storage import initialize_pipeline_status
-    from lightrag.utils import setup_logger
+    from lightrag.utils import setup_logger, EmbeddingFunc
+    import functools
     LIGHTRAG_AVAILABLE = True
 except ImportError:
     LIGHTRAG_AVAILABLE = False
@@ -29,6 +30,58 @@ from ..config import settings
 from .logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _create_model_functions():
+    """
+    根据配置创建模型函数
+    
+    Returns:
+        tuple: llm_model_func
+    """
+    if not LIGHTRAG_AVAILABLE:
+        return None, None
+    
+    # 根据配置选择模型函数
+    if settings.LLM_PROVIDER == "openai" or settings.OPENAI_API_BASE:
+        # 创建自定义LLM函数
+        async def custom_llm_complete(
+            prompt: str,
+            system_prompt: str = None,
+            history_messages: list = None,
+            **kwargs
+        ):
+            return await openai_complete_if_cache(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                history_messages=history_messages or [],
+                model=settings.LLM_MODEL,
+                temperature=settings.LLM_TEMPERATURE,
+                max_tokens=settings.LLM_MAX_TOKENS,
+                base_url=settings.OPENAI_API_BASE,
+                api_key=settings.OPENAI_API_KEY,
+                **kwargs
+            )
+        
+        # 创建自定义嵌入函数，保持原有openai_embed的属性
+        async def custom_embed(texts: list):
+            return await openai_embed(
+                texts,
+                model=settings.EMBEDDING_MODEL,
+                base_url=settings.OPENAI_API_BASE,
+                api_key=settings.OPENAI_API_KEY
+            )
+
+        llm_model_func = custom_llm_complete
+        embedding_func = custom_embed
+        
+    else:
+        # 默认使用原有的GPT函数作为后备
+        logger.warning(f"Using default OpenAI functions for unsupported provider: {settings.LLM_PROVIDER}")
+        llm_model_func = gpt_4o_mini_complete
+        embedding_func = openai_embed
+    
+    return llm_model_func, embedding_func
 
 # 设置LightRAG日志
 if LIGHTRAG_AVAILABLE:
@@ -76,8 +129,25 @@ class KnowledgeBaseBuilder:
         try:
             rag = LightRAG(
                 working_dir=str(self.rag_storage_dir),
-                embedding_func=openai_embed,
-                llm_model_func=gpt_4o_mini_complete,
+                llm_model_func=lambda prompt, system_prompt=None, history_messages=[], **kwargs: openai_complete_if_cache(
+                    settings.LLM_MODEL,
+                    prompt,
+                    system_prompt=system_prompt,
+                    history_messages=history_messages,
+                    base_url=settings.OPENAI_API_BASE,
+                    api_key=settings.OPENAI_API_KEY,
+                    **kwargs,
+                ),
+                embedding_func=EmbeddingFunc(
+                    embedding_dim = settings.EMBEDDING_DIM,
+                    max_token_size = settings.EMBEDDING_MAX_TOKEN_SIZE,
+                    func = lambda texts: openai_embed(
+                        texts,
+                        model = settings.EMBEDDING_MODEL,
+                        api_key = settings.OPENAI_API_KEY,
+                        base_url = settings.OPENAI_API_BASE
+                    )  # 使用自定义嵌入函数
+                ),
             )
             
             # 重要：两个初始化调用都是必需的！
@@ -253,17 +323,62 @@ class KnowledgeBaseBuilder:
     async def _get_kb_statistics(self) -> Dict[str, Any]:
         """
         获取知识库统计信息
+        从lightrag保存的graph_chunk_entity_relation.graphml文件中读取
         
         Returns:
             Dict[str, Any]: 统计信息
         """
         try:
-            # 这里需要根据LightRAG的实际API来获取统计信息
-            # 目前返回模拟数据
+            graphml_file = self.rag_storage_dir / "graph_chunk_entity_relation.graphml"
+            
+            if not graphml_file.exists():
+                logger.warning(f"GraphML file not found: {graphml_file}")
+                return {"entities_count": 0, "relations_count": 0}
+            
+            # 读取GraphML文件并解析
+            entities_count = 0
+            relations_count = 0
+            
+            try:
+                # 使用xml.etree.ElementTree解析GraphML文件
+                import xml.etree.ElementTree as ET
+                
+                tree = ET.parse(str(graphml_file))
+                root = tree.getroot()
+                
+                # GraphML命名空间
+                ns = {'graphml': 'http://graphml.graphdrawing.org/xmlns'}
+                
+                # 查找图元素
+                graph = root.find('.//graphml:graph', ns)
+                if graph is not None:
+                    # 统计节点数量（实体）
+                    nodes = graph.findall('graphml:node', ns)
+                    entities_count = len(nodes)
+                    
+                    # 统计边数量（关系）
+                    edges = graph.findall('graphml:edge', ns)
+                    relations_count = len(edges)
+                    
+                    logger.info(f"GraphML statistics - Entities: {entities_count}, Relations: {relations_count}")
+                else:
+                    logger.warning("No graph element found in GraphML file")
+                    
+            except ET.ParseError as e:
+                logger.error(f"Failed to parse GraphML file: {str(e)}")
+                # 尝试简单的文本解析作为备选方案
+                with open(graphml_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # 简单计数节点和边标签
+                    entities_count = content.count('<node ')
+                    relations_count = content.count('<edge ')
+                    logger.info(f"Fallback text parsing - Entities: {entities_count}, Relations: {relations_count}")
+            
             return {
-                "entities_count": 0,  # 需要从LightRAG获取实际数据
-                "relations_count": 0,  # 需要从LightRAG获取实际数据
+                "entities_count": entities_count,
+                "relations_count": relations_count,
             }
+            
         except Exception as e:
             logger.error(f"Failed to get KB statistics: {str(e)}")
             return {"entities_count": 0, "relations_count": 0}
@@ -480,7 +595,11 @@ class KnowledgeBaseBuilder:
             import shutil
             
             if self.kb_dir.exists():
-                shutil.rmtree(self.kb_dir)
+                # 删除 rag_storage/, config.json, build_status.json
+                shutil.rmtree(self.kb_dir / "rag_storage", ignore_errors=True)
+                (self.kb_dir / "config.json").unlink(missing_ok=True)
+                (self.kb_dir / "build_status.json").unlink(missing_ok=True)
+
                 logger.info(f"Knowledge base {self.kb_id} deleted successfully")
             
             return {

@@ -11,9 +11,22 @@ function DataManagement() {
   const [schemaData, setSchemaData] = useState(null)
   const [loadingSchema, setLoadingSchema] = useState(false)
   const [previewDbName, setPreviewDbName] = useState('')
+  
+  // Document upload states
+  const [documentFiles, setDocumentFiles] = useState([])
+  const [kbId, setKbId] = useState('')
+  const [uploadingDocs, setUploadingDocs] = useState(false)
+  const [documentUploadResult, setDocumentUploadResult] = useState(null)
+  
+  // Table collapse states
+  const [collapsedTables, setCollapsedTables] = useState(new Set())
 
   const handleFileChange = (e) => {
     setFiles(Array.from(e.target.files))
+  }
+
+  const handleDocumentFileChange = (e) => {
+    setDocumentFiles(Array.from(e.target.files))
   }
 
   const handleUpload = async () => {
@@ -49,9 +62,44 @@ function DataManagement() {
     }
   }
 
+  const handleDocumentUpload = async () => {
+    if (!documentFiles.length || !kbId) return
+
+    setUploadingDocs(true)
+    setDocumentUploadResult(null)
+
+    const formData = new FormData()
+    documentFiles.forEach(file => formData.append('files', file))
+    formData.append('kb_id', kbId)
+    formData.append('process_immediately', 'true')
+
+    try {
+      const response = await fetch(`${backendUrl}/api/v1/document/upload`, {
+        method: 'POST',
+        body: formData
+      })
+
+      const result = await response.json()
+      
+      if (response.ok) {
+        setDocumentUploadResult(result)
+        setDocumentFiles([])
+        setKbId('')
+        document.getElementById('document-file-input').value = ''
+      } else {
+        setDocumentUploadResult({ error: result.detail || result.error || '上传失败' })
+      }
+    } catch (error) {
+      setDocumentUploadResult({ error: error.message })
+    } finally {
+      setUploadingDocs(false)
+    }
+  }
+
   const handlePreviewSchema = async (dbName) => {
     setLoadingSchema(true)
     setSchemaData(null)
+    setCollapsedTables(new Set()) // Reset collapse state when loading new schema
 
     try {
       const response = await fetch(`${backendUrl}/schema/${dbName}`)
@@ -69,17 +117,113 @@ function DataManagement() {
     }
   }
 
+  const toggleTableCollapse = (tableIndex) => {
+    const newCollapsedTables = new Set(collapsedTables)
+    if (newCollapsedTables.has(tableIndex)) {
+      newCollapsedTables.delete(tableIndex)
+    } else {
+      newCollapsedTables.add(tableIndex)
+    }
+    setCollapsedTables(newCollapsedTables)
+  }
+
+  const toggleAllTables = () => {
+    if (!schemaData) return
+    
+    if (collapsedTables.size === schemaData.tables.length) {
+      // All collapsed, expand all
+      setCollapsedTables(new Set())
+    } else {
+      // Some or none collapsed, collapse all
+      setCollapsedTables(new Set(schemaData.tables.map((_, index) => index)))
+    }
+  }
+
   return (
     <div className="data-management">
       <div className="data-management-header">
         <h1>数据管理</h1>
-        <p>上传 Excel 或 CSV 文件并预览数据结构</p>
+        <p>上传 Excel/CSV 文件或文档文件并预览数据结构</p>
       </div>
 
-      <div className="upload-section">
+      <div className="upload-sections-grid">
         <div className="upload-card">
-          <h2>上传数据文件</h2>
+          <h2>上传文档文件</h2>
+          <p>支持 PDF、Word、文本等文档格式</p>
           
+          <div className="form-group">
+            <label htmlFor="kb-id">知识库ID</label>
+            <input
+              id="kb-id"
+              type="text"
+              value={kbId}
+              onChange={(e) => setKbId(e.target.value)}
+              placeholder="输入知识库ID"
+              className="form-input"
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="document-file-input">选择文档 (.pdf, .docx, .doc, .txt, .md, .html)</label>
+            <input
+              id="document-file-input"
+              type="file"
+              multiple
+              accept=".pdf,.docx,.doc,.txt,.md,.markdown,.html"
+              onChange={handleDocumentFileChange}
+              className="form-file-input"
+            />
+            {documentFiles.length > 0 && (
+              <div className="file-list">
+                <p>已选择 {documentFiles.length} 个文档：</p>
+                <ul>
+                  {documentFiles.map((file, index) => (
+                    <li key={index}>{file.name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleDocumentUpload}
+            disabled={!documentFiles.length || !kbId || uploadingDocs}
+            className="upload-btn"
+          >
+            {uploadingDocs ? '上传中...' : '上传文档'}
+          </button>
+
+          {documentUploadResult && (
+            <div className={`upload-result ${documentUploadResult.error ? 'error' : 'success'}`}>
+              {documentUploadResult.error ? (
+                <div>
+                  <h3>上传失败</h3>
+                  <p>{documentUploadResult.error}</p>
+                </div>
+              ) : (
+                <div>
+                  <h3>上传成功</h3>
+                  <p>任务ID: {documentUploadResult.task_id}</p>
+                  <p>状态: {documentUploadResult.status}</p>
+                  <p>共上传 {documentUploadResult.total_files} 个文档到知识库 "{documentUploadResult.kb_id}"</p>
+                  
+                  <div className="files-info">
+                    <h4>上传的文档：</h4>
+                    {documentUploadResult.uploaded_files?.map((file, index) => (
+                      <div key={index} className="file-info">
+                        <strong>{file.filename}</strong> ({(file.size / 1024).toFixed(1)} KB) - {file.status}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="upload-card">
+          <h2>上传数据文件 (Excel/CSV)</h2>
+          <p>支持 Excel 和 CSV 格式</p>
           <div className="form-group">
             <label htmlFor="db-name">数据库名称</label>
             <input
@@ -199,27 +343,60 @@ function DataManagement() {
             ) : (
               <div className="schema-content">
                 <div className="schema-header">
-                  <h3>数据库: {schemaData.database_name}</h3>
-                  <p>共 {schemaData.tables.length} 个表</p>
+                  <div className="schema-header-content">
+                    <h3>数据库: {schemaData.database_name}</h3>
+                    <p>共 {schemaData.tables.length} 个表</p>
+                  </div>
+                  <button 
+                    className="toggle-all-btn"
+                    onClick={toggleAllTables}
+                    title={collapsedTables.size === schemaData.tables.length ? "展开所有表格" : "折叠所有表格"}
+                  >
+                    {collapsedTables.size === schemaData.tables.length ? "📂" : "📁"} 
+                    {collapsedTables.size === schemaData.tables.length ? " 全部展开" : " 全部折叠"}
+                  </button>
                 </div>
 
-                {schemaData.tables.map((table, index) => (
-                  <div key={index} className="table-schema">
-                    <h4>{table.table_name}</h4>
-                    <p className="table-meta">{table.row_count} 行数据</p>
-                    
-                    <div className="columns-grid">
-                      {table.columns.map((column, colIndex) => (
-                        <div key={colIndex} className="column-info">
-                          <span className="column-name">{column.name}</span>
-                          <span className="column-type">{column.type}</span>
-                          {column.primary_key && <span className="column-pk">PK</span>}
-                          {column.not_null && <span className="column-nn">NOT NULL</span>}
+                {schemaData.tables.map((table, index) => {
+                  const isCollapsed = collapsedTables.has(index)
+                  return (
+                    <div key={index} className="table-schema">
+                      <div 
+                        className="table-header" 
+                        onClick={() => toggleTableCollapse(index)}
+                      >
+                        <div className="table-header-content">
+                          <h4>{table.table_name}</h4>
+                          <p className="table-meta">{table.row_count} 行数据</p>
                         </div>
-                      ))}
+                        <div className={`collapse-icon ${isCollapsed ? 'collapsed' : ''}`}>
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                            <path 
+                              d="M4 6L8 10L12 6" 
+                              stroke="currentColor" 
+                              strokeWidth="2" 
+                              strokeLinecap="round" 
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                      
+                      <div className={`columns-container ${isCollapsed ? 'collapsed' : ''}`}>
+                        <div className="columns-grid">
+                          {table.columns.map((column, colIndex) => (
+                            <div key={colIndex} className="column-info">
+                              <span className="column-name">{column.name}</span>
+                              <span className="column-type">{column.type}</span>
+                              {column.primary_key && <span className="column-pk">PK</span>}
+                              {column.not_null && <span className="column-nn">NOT NULL</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

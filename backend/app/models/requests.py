@@ -83,6 +83,7 @@ class KnowledgeBaseConfig(BaseModel):
 
 class KnowledgeBaseCreateRequest(BaseModel):
     """知识库创建请求"""
+    kb_id: Optional[str] = Field(None, min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     datasource_id: str = Field(..., min_length=1)

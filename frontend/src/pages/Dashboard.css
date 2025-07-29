@@ -8,7 +8,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 20px;
+  padding: 8px 16px;
   background: white;
   border-bottom: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -17,22 +17,22 @@
 .toolbar-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .toolbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: #f8f9fa;
   border: 1px solid #dee2e6;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s;
-  min-width: 36px;
-  height: 36px;
+  min-width: 32px;
+  height: 32px;
 }
 
 .toolbar-btn:hover {
@@ -145,12 +145,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: #f8f9fa;
   border-bottom: 1px solid #e9ecef;
   cursor: move;
   user-select: none;
-  min-height: 32px;
+  min-height: 28px;
   flex-shrink: 0;
 }
 
@@ -205,13 +205,13 @@
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 16px;
+  border-radius: 12px;
   box-shadow: 
     0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 8px 32px rgba(0, 0, 0, 0.12),
-    0 32px 64px rgba(0, 0, 0, 0.08);
+    0 6px 24px rgba(0, 0, 0, 0.1),
+    0 24px 48px rgba(0, 0, 0, 0.06);
   z-index: 1000;
-  width: 420px;
+  width: 380px;
   transform-origin: top left;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -220,7 +220,7 @@
 .dialog-header {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: rgba(248, 249, 250, 0.8);
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   backdrop-filter: blur(20px);
@@ -272,8 +272,8 @@
 
 /* Chat Messages */
 .chat-messages {
-  padding: 20px 16px 12px;
-  max-height: 240px;
+  padding: 16px 14px 10px;
+  max-height: 200px;
   overflow-y: auto;
 }
 

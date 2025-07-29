@@ -10,6 +10,8 @@ const SideNav = () => {
     // { path: '/reports', label: '报表', icon: '📋' },
     { path: '/data', label: '数据管理', icon: '💾' },
     { path: '/training', label: '训练数据', icon: '🎓' },
+    { path: '/knowledge-base', label: '知识库管理', icon: '🧠' },
+    { path: '/chat', label: '知识库对话', icon: '💬' },
     { path: '/settings', label: '设置', icon: '⚙️' }
   ]
 

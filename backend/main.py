@@ -7,9 +7,9 @@ from app.core.logging import get_logger
 logger = get_logger()
 
 if __name__ == "__main__":
-    logger.info("🚀 启动Chat2Dashboard后端服务")
-    logger.info(f"服务地址: http://{settings.HOST}:{settings.PORT}")
-    logger.info(f"日志级别: {settings.LOG_LEVEL}")
+    logger.info("🚀 Start Chat2Dashboard Backend Service")
+    logger.info(f"Server: http://{settings.HOST}:{settings.PORT}")
+    logger.info(f"Log Level: {settings.LOG_LEVEL}")
     
     try:
         uvicorn.run(
@@ -19,5 +19,5 @@ if __name__ == "__main__":
             log_level=settings.LOG_LEVEL
         )
     except Exception as e:
-        logger.error(f"服务启动失败: {str(e)}")
+        logger.error(f"Start server failed: {str(e)}")
         raise

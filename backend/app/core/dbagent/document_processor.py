@@ -179,6 +179,18 @@ class PDFProcessor(BaseDocumentProcessor):
         super().__init__()
         self.supported_formats = {'.pdf'}
     
+    def can_process(self, file_path: str) -> bool:
+        """
+        检查是否可以处理指定文件
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            bool: 是否可以处理
+        """
+        return super().can_process(file_path)
+    
     def extract_text(self, file_path: str) -> str:
         """Extract text from PDF"""
         # Basic implementation - would need PyPDF2 or similar
@@ -268,6 +280,18 @@ class DocxProcessor(BaseDocumentProcessor):
         super().__init__()
         self.supported_formats = {'.docx', '.doc'}
     
+    def can_process(self, file_path: str) -> bool:
+        """
+        检查是否可以处理指定文件
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            bool: 是否可以处理
+        """
+        return super().can_process(file_path)
+    
     def extract_text(self, file_path: str) -> str:
         """Extract text from DOCX"""
         # Basic implementation - would need python-docx
@@ -338,6 +362,18 @@ class TextProcessor(BaseDocumentProcessor):
     def __init__(self):
         super().__init__()
         self.supported_formats = {'.txt', '.md', '.markdown', '.html'}
+    
+    def can_process(self, file_path: str) -> bool:
+        """
+        检查是否可以处理指定文件
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            bool: 是否可以处理
+        """
+        return super().can_process(file_path)
     
     def extract_text(self, file_path: str) -> str:
         """
