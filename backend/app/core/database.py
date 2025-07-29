@@ -225,7 +225,7 @@ class DatabaseManager:
         """
         schema_text = "\n\n".join([
             f"表名: {desc['table_name']}\n"
-            f"包含列: {', '.join([f'{col['name']} ({col['type']})' for col in desc['columns']])}"
+            f"包含列: {', '.join([f'{col["name"]} ({col["type"]})' for col in desc['columns']])}"
             for desc in table_descriptions
         ])
 
