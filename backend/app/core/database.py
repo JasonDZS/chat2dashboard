@@ -63,19 +63,46 @@ class DatabaseManager:
         return schema_file
 
     @staticmethod
-    def generate_sql_statements(table_creation_sql: Dict[str, str], conn: sqlite3.Connection) -> List[str]:
+    def generate_sql_statements(table_creation_sql: Dict[str, str],
+                                 conn: sqlite3.Connection) -> List[Dict]:
         """
-        生成有价值的SQL语句集合
-
+        生成有价值的SQL语句集合，使用API生成自然语言问题
+        
         返回格式: [{"question": "...", "sql": "...", "added_at": "..."}, ...]
         """
         sql_entries = []
         current_time = datetime.datetime.now().isoformat()
 
+        # 收集表结构信息用于AI提示
+        table_descriptions = []
+        for table_name, create_sql in table_creation_sql.items():
+            columns = []
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(f"PRAGMA table_info(\"{table_name}\")")
+                    columns_info = cursor.fetchall()
+                    columns = [{"name": col[1], "type": col[2].upper()} for col in columns_info]
+                except sqlite3.Error:
+                    pass
+
+            table_descriptions.append({
+                "table_name": table_name,
+                "columns": columns,
+                "create_sql": create_sql
+            })
+
+        # 使用API生成自然语言问题
+        ai_questions = DatabaseManager.generate_questions_with_ai(table_descriptions)
+
         for table_name, _ in table_creation_sql.items():
             #基础查询 - 获取样本数据
             sql = f"SELECT * FROM \"{table_name}\" LIMIT 10;"
-            question = f"获取表 '{table_name}' 的前10条样本数据"
+
+            # 使用AI生成的问题或默认问题
+            question = next((q for q in ai_questions if "样本" in q or "示例" in q or "查看" in q),
+                            f"查看{table_name.replace('_', ' ')}的前10条记录")
+
             sql_entries.append({
                 "question": question,
                 "sql": sql,
@@ -84,7 +111,10 @@ class DatabaseManager:
 
             #基础查询 - 统计总行数
             sql = f"SELECT COUNT(*) AS total_rows FROM \"{table_name}\";"
-            question = f"统计表 '{table_name}' 的总行数"
+
+            question = next((q for q in ai_questions if "总数" in q or "数量" in q or "总计" in q),
+                            f"统计{table_name.replace('_', ' ')}的总数量")
+
             sql_entries.append({
                 "question": question,
                 "sql": sql,
@@ -101,13 +131,19 @@ class DatabaseManager:
                         col_name = col[1]
                         col_type = col[2].upper()
 
+                        #数值型分析 - 分组统计
                         if "INT" in col_type or "REAL" in col_type:
-                            #数值型分析 - 分组统计
                             sql = (
                                 f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" "
                                 f"GROUP BY \"{col_name}\" ORDER BY count DESC;"
                             )
-                            question = f"按列 '{col_name}' 分组统计表 '{table_name}' 中的记录分布"
+
+                            # 使用AI生成的问题或默认问题
+                            question = next(
+                                (q for q in ai_questions if col_name in q and ("分布" in q or "频率" in q)),
+                                f"按{col_name.replace('_', ' ')}分析{table_name.replace('_', ' ')}的分布情况"
+                            )
+
                             sql_entries.append({
                                 "question": question,
                                 "sql": sql,
@@ -118,23 +154,36 @@ class DatabaseManager:
                             sql = (
                                 f"SELECT AVG(\"{col_name}\") AS avg_value, "
                                 f"MIN(\"{col_name}\") AS min_value, "
-                                f"MAX(\"{col_name}\") AS max_value "
+                                f"MAX(\"{col_name}\") AS max_value, "
+                                f"SUM(\"{col_name}\") AS sum_value "
                                 f"FROM \"{table_name}\";"
                             )
-                            question = f"计算表 '{table_name}' 中列 '{col_name}' 的平均值、最小值和最大值"
+
+                            question = next(
+                                (q for q in ai_questions if
+                                 col_name in q and ("平均" in q or "最大" in q or "最小" in q)),
+                                f"计算{table_name.replace('_', ' ')}中{col_name.replace('_', ' ')}的基本统计指标"
+                            )
+
                             sql_entries.append({
                                 "question": question,
                                 "sql": sql,
                                 "added_at": current_time
                             })
 
+                        #文本型分析 - TOP 10 值
                         elif "TEXT" in col_type:
-                            #文本型分析 - TOP 10 值
                             sql = (
                                 f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" "
                                 f"GROUP BY \"{col_name}\" ORDER BY count DESC LIMIT 10;"
                             )
-                            question = f"找出表 '{table_name}' 中列 '{col_name}' 最常见的10个值"
+
+                            question = next(
+                                (q for q in ai_questions if
+                                 col_name in q and ("常见" in q or "热门" in q or "排行" in q)),
+                                f"找出{table_name.replace('_', ' ')}中{col_name.replace('_', ' ')}最常见的10个值"
+                            )
+
                             sql_entries.append({
                                 "question": question,
                                 "sql": sql,
@@ -144,20 +193,82 @@ class DatabaseManager:
                             #文本型分析 - 长度分布
                             sql = (
                                 f"SELECT LENGTH(\"{col_name}\") AS length, COUNT(*) AS count "
-                                f"FROM \"{table_name}\" GROUP BY length;"
+                                f"FROM \"{table_name}\" GROUP BY length ORDER BY length;"
                             )
-                            question = f"分析表 '{table_name}' 中列 '{col_name}' 的文本长度分布"
+
+                            question = next(
+                                (q for q in ai_questions if col_name in q and ("长度" in q or "大小" in q)),
+                                f"分析{table_name.replace('_', ' ')}中{col_name.replace('_', ' ')}的文本长度分布"
+                            )
+
                             sql_entries.append({
                                 "question": question,
                                 "sql": sql,
                                 "added_at": current_time
                             })
 
-                except sqlite3.Error:
-                    # 如果获取列信息失败，继续下一张表
+                except sqlite3.Error: # 如果获取列信息失败，继续下一张表
                     continue
 
         return sql_entries
+
+    @staticmethod
+    def generate_questions_with_ai(table_descriptions: List[Dict],num_questions: int = 10) -> List[str]:
+        """
+        使用AI基于数据库schema生成问题
+
+        Args:
+            num_questions (int): 要生成的问题数量
+
+        Returns:
+            List[str]: 生成的问题列表
+        """
+        schema_text = "\n\n".join([
+            f"表名: {desc['table_name']}\n"
+            f"包含列: {', '.join([f'{col['name']} ({col['type']})' for col in desc['columns']])}"
+            for desc in table_descriptions
+        ])
+
+        prompt = f"""
+    基于以下数据库表结构，生成{num_questions}个具体的查询问题。这些问题应该：
+    1. 涵盖不同类型的查询（统计、分组、排序、时间范围等）
+    2. 具有实际业务意义
+    3. 可以通过SQL查询得到明确答案
+    4. 适合用图表展示结果
+
+
+    数据库表结构：
+    {schema_text}
+
+    请只返回问题列表，每行一个问题，不要包含任何其他内容。
+    """
+
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_API_BASE)
+
+            response = client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,# Use slightly higher temperature for question generation
+                max_tokens=1024
+            )
+
+            # 解析返回的问题
+            questions_text = response.choices[0].message.content.strip()
+            questions = [q.strip() for q in questions_text.split('\n') if q.strip()]
+
+            return questions
+
+        except Exception as e:
+            print(f"AI问题生成失败: {str(e)}")
+            # 备选方案：基于表结构生成简单问题
+            return [
+                f"分析{desc['table_name'].replace('_', ' ')}的数据分布"
+                for desc in table_descriptions
+            ]
 
     @staticmethod
     def generate_documents(db_name: str, tables: List[TableInfo]) -> List[Dict]:
