@@ -9,6 +9,7 @@ import Settings from './pages/Settings'
 import DataManagement from './pages/DataManagement'
 import TrainingDataEditor from './pages/TrainingDataEditor'
 import KnowledgeBase from './pages/KnowledgeBase'
+import KnowledgeGraph from './pages/KnowledgeGraph'
 import Chat from './pages/Chat'
 import './App.css'
 
@@ -29,6 +30,7 @@ function App() {
                 <Route path="/data" element={<DataManagement />} />
                 <Route path="/training" element={<TrainingDataEditor />} />
                 <Route path="/knowledge-base" element={<KnowledgeBase />} />
+                <Route path="/knowledge-graph" element={<KnowledgeGraph />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>

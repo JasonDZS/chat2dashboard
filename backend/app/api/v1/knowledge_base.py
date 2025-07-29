@@ -2,6 +2,7 @@
 知识库管理API接口
 """
 import os
+import xml.etree.ElementTree as ET
 from fastapi import APIRouter, HTTPException, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Dict, Any
@@ -495,6 +496,163 @@ async def validate_knowledge_base(kb_id: str):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Knowledge base validation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _parse_graphml_to_kg_json(graphml_file_path: str) -> Dict[str, Any]:
+    """
+    解析GraphML文件并转换为知识图谱JSON格式
+    
+    Args:
+        graphml_file_path: GraphML文件路径
+        
+    Returns:
+        Dict: 知识图谱JSON格式数据
+    """
+    try:
+        # 解析GraphML文件
+        tree = ET.parse(graphml_file_path)
+        root = tree.getroot()
+        
+        # GraphML命名空间
+        ns = {'graphml': 'http://graphml.graphdrawing.org/xmlns'}
+        
+        nodes = []
+        links = []
+        categories = {}
+        category_counter = 0
+        
+        # 解析节点
+        for node in root.findall('.//graphml:node', ns):
+            node_id = node.get('id')
+            node_data = {}
+            
+            # 提取节点属性
+            for data in node.findall('graphml:data', ns):
+                key = data.get('key')
+                value = data.text
+                if key and value:
+                    # 根据GraphML的key定义映射属性名
+                    if key == 'd0':
+                        node_data['entity_id'] = value
+                    elif key == 'd1':
+                        node_data['entity_type'] = value
+                    elif key == 'd2':
+                        node_data['description'] = value
+                    elif key == 'd3':
+                        node_data['source_id'] = value
+                    elif key == 'd4':
+                        node_data['file_path'] = value
+                    else:
+                        node_data[key] = value
+            
+            # 根据实体类型确定分类
+            entity_type = node_data.get('entity_type', 'Unknown')
+            if entity_type not in categories:
+                categories[entity_type] = category_counter
+                category_counter += 1
+            
+            # 构建节点对象
+            node_obj = {
+                "id": node_id,
+                "name": node_data.get('entity_id', node_id),
+                "category": categories[entity_type]
+            }
+            
+            # 添加可选属性
+            if 'description' in node_data:
+                node_obj["value"] = len(node_data['description'])  # 使用描述长度作为权重
+                node_obj["symbolSize"] = min(50, max(10, len(node_data['description']) / 10))  # 根据描述长度设置节点大小
+            else:
+                node_obj["value"] = 10
+                node_obj["symbolSize"] = 15
+            
+            nodes.append(node_obj)
+        
+        # 解析边/关系
+        for edge in root.findall('.//graphml:edge', ns):
+            source_id = edge.get('source')
+            target_id = edge.get('target')
+            
+            if source_id and target_id:
+                links.append({
+                    "source": source_id,
+                    "target": target_id
+                })
+        
+        # 构建分类列表
+        categories_list = []
+        for category_name, category_index in sorted(categories.items(), key=lambda x: x[1]):
+            categories_list.append({"name": category_name})
+        
+        # 返回知识图谱JSON格式
+        return {
+            "nodes": nodes,
+            "links": links,
+            "categories": categories_list
+        }
+        
+    except ET.ParseError as e:
+        logger.error(f"Failed to parse GraphML file {graphml_file_path}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Invalid GraphML file format: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error processing GraphML file {graphml_file_path}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process GraphML file: {str(e)}")
+
+
+@router.get("/{kb_id}/graph")
+async def get_knowledge_graph(kb_id: str):
+    """
+    获取知识库的知识图谱数据
+    
+    Args:
+        kb_id: 知识库ID
+        
+    Returns:
+        Dict: 知识图谱JSON格式数据
+    """
+    try:
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
+        
+        # 检查知识库是否已构建
+        build_status = await kb_manager.get_build_status(kb_id)
+        if build_status.get("status") != "ready":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Knowledge base is not ready. Current status: {build_status.get('status')}"
+            )
+        
+        # 查找GraphML文件
+        graphml_file = kb_dir / "rag_storage" / "graph_chunk_entity_relation.graphml"
+        if not graphml_file.exists():
+            raise HTTPException(
+                status_code=404, 
+                detail="Knowledge graph file not found. Please rebuild the knowledge base."
+            )
+        
+        # 解析GraphML文件并转换为知识图谱JSON格式
+        kg_data = _parse_graphml_to_kg_json(str(graphml_file))
+        
+        logger.info(f"Successfully retrieved knowledge graph for {kb_id}: {len(kg_data['nodes'])} nodes, {len(kg_data['links'])} links")
+        
+        return JSONResponse(content={
+            "kb_id": kb_id,
+            "graph_data": kg_data,
+            "metadata": {
+                "nodes_count": len(kg_data['nodes']),
+                "links_count": len(kg_data['links']),
+                "categories_count": len(kg_data['categories']),
+                "generated_at": datetime.now().isoformat()
+            }
+        })
+        
+    except KnowledgeBaseNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to get knowledge graph for {kb_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
