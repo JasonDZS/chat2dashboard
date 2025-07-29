@@ -7,6 +7,8 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime
 import os
+import json
+from pathlib import Path
 
 from ...models.requests import (
     DocumentProcessRequest,
@@ -24,14 +26,17 @@ from ...core.exceptions import (
     UnsupportedFileTypeError,
     ProcessingInProgressError
 )
+from ...core.dbagent.document_processor import DocumentProcessorFactory, ProcessedDocument
+from ...config import settings
+from ...core.logging import get_logger
 
 router = APIRouter(prefix="/document", tags=["document"])
-
+logger = get_logger(__name__)
 
 @router.post("/upload", response_model=DocumentProcessResponse)
 async def upload_documents(
     files: List[UploadFile] = File(...),
-    kb_id: Optional[str] = Form(None),
+    kb_id: str = Form(...),
     process_immediately: bool = Form(True),
     background_tasks: BackgroundTasks = None
 ):
@@ -40,31 +45,65 @@ async def upload_documents(
     
     Args:
         files: 上传的文件列表
-        kb_id: 目标知识库ID (可选)
+        kb_id: 目标知识库ID
         process_immediately: 是否立即处理
         background_tasks: 后台任务
         
     Returns:
         DocumentProcessResponse: 处理响应
     """
+    logger.info(f"Received upload request for {len(files)} files to knowledge base {kb_id}")
     try:
-        # TODO: 实现文档上传逻辑
         # 1. 验证文件类型和大小
-        # 2. 保存文件到临时目录
-        # 3. 创建文档处理记录
-        # 4. 可选：立即开始处理
-        
-        # 验证文件类型
         supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html'}
+        max_file_size = 100 * 1024 * 1024  # 100MB
         uploaded_files = []
         
+        # 创建文档存储目录
+        documents_dir = Path(settings.DATABASES_DIR) / kb_id / "docs"
+        documents_dir.mkdir(parents=True, exist_ok=True)
+        
         for file in files:
+            logger.info(f"Processing file: {file.filename}, size: {file.size} bytes")
             filename_lower = file.filename.lower()
             if not any(filename_lower.endswith(ext) for ext in supported_extensions):
                 raise UnsupportedFileTypeError(f"File type not supported: {file.filename}")
             
-            # TODO: 保存文件逻辑
+            if file.size > max_file_size:
+                raise HTTPException(status_code=413, detail=f"File too large: {file.filename}")
+            
+            # 2. 保存文件到文档目录
             file_id = str(uuid.uuid4())
+            file_ext = Path(file.filename).suffix
+            saved_filename = f"{file_id}{file_ext}"
+            file_path = documents_dir / saved_filename
+            
+            # 保存文件内容
+            content = await file.read()
+            with open(file_path, 'wb') as f:
+                f.write(content)
+            
+            # 3. 创建文档处理记录
+            doc_record = {
+                "id": file_id,
+                "filename": file.filename,
+                "original_filename": file.filename,
+                "file_path": str(file_path),
+                "file_size": file.size,
+                "file_type": file_ext.lstrip('.'),
+                "status": "uploaded",
+                "kb_id": kb_id,
+                "upload_time": datetime.now().isoformat(),
+                "metadata": {},
+                "processing_results": {}
+            }
+            
+            # 保存文档记录到JSON文件
+            record_file = documents_dir / f"{file_id}_record.json"
+            with open(record_file, 'w', encoding='utf-8') as f:
+                import json
+                json.dump(doc_record, f, indent=2, ensure_ascii=False)
+            
             uploaded_files.append({
                 "id": file_id,
                 "filename": file.filename,
@@ -73,11 +112,11 @@ async def upload_documents(
             })
         
         task_id = str(uuid.uuid4())
-        
-        if process_immediately and background_tasks:
-            # 添加后台处理任务
-            background_tasks.add_task(_process_documents_task, uploaded_files, kb_id)
-        
+
+        # if process_immediately and background_tasks:
+        #     # 添加后台处理任务
+        #     background_tasks.add_task(_process_documents_task, uploaded_files, kb_id)
+        #
         return DocumentProcessResponse(
             task_id=task_id,
             status="uploaded" if not process_immediately else "processing",
@@ -88,8 +127,10 @@ async def upload_documents(
         )
         
     except UnsupportedFileTypeError as e:
+        logger.error(f"Unsupported file type: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.error(f"Error processing upload: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -190,36 +231,48 @@ async def get_process_status(task_id: str):
     Returns:
         Dict: 任务状态信息
     """
-    try:
-        # TODO: 实现任务状态查询
-        # 1. 查询任务信息
-        # 2. 获取处理进度
-        # 3. 返回详细状态
-        
+    # 查询任务状态 - 这里 task_id 实际上是一个文档ID或批量任务ID
+    documents_dir = Path(settings.DATABASES_DIR) / "documents"
+
+    # 尝试查找单个文档记录
+    record_file = documents_dir / f"{task_id}_record.json"
+    if record_file.exists():
+        with open(record_file, 'r', encoding='utf-8') as f:
+            doc_record = json.loads(f.read())
+
+        status = doc_record.get("status", "unknown")
+        progress = 100.0 if status == "processed" else 50.0 if status == "processing" else 0.0
+
         return JSONResponse(content={
             "task_id": task_id,
-            "status": "completed",  # processing, completed, failed
-            "progress": 100.0,
-            "processed_files": 5,
-            "total_files": 5,
-            "failed_files": 0,
-            "current_file": None,
-            "started_at": datetime.now().isoformat(),
-            "completed_at": datetime.now().isoformat(),
-            "processing_time": 45.2,
-            "results": {
-                "extracted_text_length": 15420,
-                "detected_language": "zh",
-                "extracted_tables": 3,
-                "extracted_images": 2,
-                "chunks_created": 24
-            },
-            "errors": []
+            "status": status,
+            "progress": progress,
+            "processed_files": 1 if status == "processed" else 0,
+            "total_files": 1,
+            "failed_files": 1 if status == "failed" else 0,
+            "current_file": doc_record.get("filename") if status == "processing" else None,
+            "started_at": doc_record.get("upload_time"),
+            "completed_at": doc_record.get("process_time"),
+            "processing_time": 0.0,  # TODO: 计算实际处理时间
+            "results": doc_record.get("processing_results", {}),
+            "errors": [doc_record.get("error")] if doc_record.get("error") else []
         })
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+    # 如果没有找到记录，返回默认状态
+    return JSONResponse(content={
+        "task_id": task_id,
+        "status": "not_found",
+        "progress": 0.0,
+        "processed_files": 0,
+        "total_files": 0,
+        "failed_files": 0,
+        "current_file": None,
+        "started_at": None,
+        "completed_at": None,
+        "processing_time": 0.0,
+        "results": {},
+        "errors": ["Task not found"]
+    })
 
 @router.get("/{file_id}")
 async def get_document_info(file_id: str):
@@ -233,42 +286,17 @@ async def get_document_info(file_id: str):
         Dict: 文档信息
     """
     try:
-        # TODO: 实现文档信息查询
-        # 1. 查询文档基本信息
-        # 2. 获取处理结果
-        # 3. 返回详细信息
+        # 查询文档记录
+        documents_dir = Path(settings.DATABASES_DIR) / "documents"
+        record_file = documents_dir / f"{file_id}_record.json"
         
-        return JSONResponse(content={
-            "id": file_id,
-            "filename": "example.pdf",
-            "original_filename": "example.pdf",
-            "file_size": 1024000,
-            "file_type": "pdf",
-            "upload_time": datetime.now().isoformat(),
-            "process_time": datetime.now().isoformat(),
-            "status": "processed",
-            "metadata": {
-                "title": "示例文档",
-                "author": "作者",
-                "page_count": 10,
-                "word_count": 5000,
-                "language": "zh",
-                "encoding": "utf-8"
-            },
-            "processing_results": {
-                "text_length": 15420,
-                "chunks_count": 24,
-                "tables_count": 3,
-                "images_count": 2,
-                "links_count": 5
-            },
-            "extraction_config": {
-                "extract_tables": True,
-                "extract_images": True,
-                "chunk_size": 512,
-                "chunk_overlap": 50
-            }
-        })
+        if not record_file.exists():
+            raise DocumentNotFoundError(f"Document {file_id} not found")
+        
+        with open(record_file, 'r', encoding='utf-8') as f:
+            doc_record = json.loads(f.read())
+        
+        return JSONResponse(content=doc_record)
         
     except DocumentNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -296,43 +324,37 @@ async def get_document_content(
         Dict: 文档内容
     """
     try:
-        # TODO: 实现文档内容获取
-        # 1. 查询文档处理结果
-        # 2. 根据格式要求返回内容
-        # 3. 可选包含元数据和结构
+        # 查询文档记录和内容
+        documents_dir = Path(settings.DATABASES_DIR) / "documents"
+        record_file = documents_dir / f"{file_id}_record.json"
+        content_file = documents_dir / f"{file_id}_content.json"
+        
+        if not record_file.exists():
+            raise DocumentNotFoundError(f"Document {file_id} not found")
+        
+        with open(record_file, 'r', encoding='utf-8') as f:
+            doc_record = json.loads(f.read())
         
         response_data = {
             "file_id": file_id,
-            "content": "文档的文本内容...",
+            "content": "",
             "format": format
         }
         
-        if include_metadata:
-            response_data["metadata"] = {
-                "title": "示例文档",
-                "author": "作者",
-                "page_count": 10,
-                "extraction_time": datetime.now().isoformat()
-            }
+        # 加载文档内容
+        if content_file.exists():
+            with open(content_file, 'r', encoding='utf-8') as f:
+                content_data = json.loads(f.read())
+                response_data["content"] = content_data.get("content", "")
+                
+                if include_structure:
+                    response_data["structure"] = content_data.get("structure", {})
+                    response_data["tables"] = content_data.get("tables", [])
+                    response_data["images"] = content_data.get("images", [])
+                    response_data["links"] = content_data.get("links", [])
         
-        if include_structure:
-            response_data["structure"] = {
-                "headings": [
-                    {"level": 1, "text": "第一章", "page": 1},
-                    {"level": 2, "text": "1.1 概述", "page": 1}
-                ],
-                "paragraphs": [
-                    {"text": "段落内容...", "page": 1, "position": {"x": 100, "y": 200}}
-                ],
-                "tables": [
-                    {
-                        "page": 2,
-                        "rows": 5,
-                        "cols": 3,
-                        "data": [["标题1", "标题2", "标题3"], ["数据1", "数据2", "数据3"]]
-                    }
-                ]
-            }
+        if include_metadata:
+            response_data["metadata"] = doc_record.get("metadata", {})
         
         return JSONResponse(content=response_data)
         
@@ -472,33 +494,48 @@ async def list_documents(
         Dict: 文档列表
     """
     try:
-        # TODO: 实现文档列表查询
-        # 1. 查询文档列表
-        # 2. 应用过滤条件
-        # 3. 分页处理
-        # 4. 返回列表数据
-        
-        # 模拟文档列表
-        documents = [
-            {
-                "id": str(uuid.uuid4()),
-                "filename": f"document_{i+1}.pdf",
-                "file_type": "pdf",
-                "file_size": (i+1) * 1024000,
-                "status": "processed" if i % 2 == 0 else "processing",
-                "upload_time": datetime.now().isoformat(),
-                "kb_id": kb_id,
-                "metadata": {
-                    "page_count": (i+1) * 5,
-                    "word_count": (i+1) * 1000
+        # 查询文档列表
+        documents_dir = Path(settings.DATABASES_DIR) / "documents"
+        if not documents_dir.exists():
+            return JSONResponse(content={
+                "documents": [],
+                "total_count": 0,
+                "limit": limit,
+                "offset": offset,
+                "filters": {
+                    "status": status,
+                    "file_type": file_type,
+                    "kb_id": kb_id
                 }
-            }
-            for i in range(min(limit, 5))
-        ]
+            })
+        
+        documents = []
+        record_files = list(documents_dir.glob("*_record.json"))
+        
+        for record_file in record_files:
+            try:
+                with open(record_file, 'r', encoding='utf-8') as f:
+                    doc_record = json.loads(f.read())
+                
+                # 应用过滤条件
+                if status and doc_record.get("status") != status:
+                    continue
+                if file_type and doc_record.get("file_type") != file_type:
+                    continue
+                if kb_id and doc_record.get("kb_id") != kb_id:
+                    continue
+                
+                documents.append(doc_record)
+            except (json.JSONDecodeError, Exception):
+                continue
+        
+        # 分页处理
+        total_count = len(documents)
+        documents = documents[offset:offset + limit]
         
         return JSONResponse(content={
             "documents": documents,
-            "total_count": len(documents),
+            "total_count": total_count,
             "limit": limit,
             "offset": offset,
             "filters": {
@@ -524,11 +561,25 @@ async def delete_document(file_id: str):
         Dict: 删除结果
     """
     try:
-        # TODO: 实现文档删除
-        # 1. 验证文档存在性
-        # 2. 检查是否正在使用中
-        # 3. 清理相关文件和数据
-        # 4. 删除文档记录
+        # 实现文档删除
+        documents_dir = Path(settings.DATABASES_DIR) / "documents"
+        record_file = documents_dir / f"{file_id}_record.json"
+        content_file = documents_dir / f"{file_id}_content.json"
+        
+        if not record_file.exists():
+            raise DocumentNotFoundError(f"Document {file_id} not found")
+        
+        # 加载文档记录获取文件路径
+        with open(record_file, 'r', encoding='utf-8') as f:
+            doc_record = json.loads(f.read())
+        
+        file_path = Path(doc_record.get("file_path", ""))
+        
+        # 删除相关文件
+        files_to_delete = [record_file, content_file, file_path]
+        for file_to_delete in files_to_delete:
+            if file_to_delete.exists():
+                file_to_delete.unlink()
         
         return JSONResponse(content={
             "message": f"Document {file_id} deleted successfully",
@@ -552,12 +603,69 @@ async def _process_documents_task(uploaded_files: List[Dict], kb_id: Optional[st
         uploaded_files: 上传的文件列表
         kb_id: 目标知识库ID
     """
-    # TODO: 实现后台文档处理逻辑
-    # 1. 初始化文档处理器
-    # 2. 逐个处理文档
-    # 3. 提取文本、表格、图片
-    # 4. 更新处理状态
-    pass
+    documents_dir = Path(settings.DATABASES_DIR) / "documents"
+    factory = DocumentProcessorFactory()
+    
+    for file_info in uploaded_files:
+        file_id = file_info["id"]
+        try:
+            # 更新处理状态
+            await _update_document_status(file_id, "processing")
+            
+            # 加载文档记录
+            record_file = documents_dir / f"{file_id}_record.json"
+            with open(record_file, 'r', encoding='utf-8') as f:
+                doc_record = json.loads(f.read())
+            
+            file_path = doc_record["file_path"]
+            
+            # 获取对应的文档处理器
+            processor = factory.get_processor(file_path)
+            if processor:
+                # 处理文档
+                processed_doc = processor.process(file_path)
+                
+                # 更新文档记录
+                doc_record["status"] = "processed"
+                doc_record["process_time"] = datetime.now().isoformat()
+                doc_record["metadata"] = {
+                    "title": processed_doc.metadata.title or "",
+                    "author": processed_doc.metadata.author or "",
+                    "page_count": processed_doc.metadata.page_count,
+                    "word_count": processed_doc.metadata.word_count,
+                    "language": processed_doc.metadata.language,
+                    "encoding": processed_doc.metadata.encoding
+                }
+                doc_record["processing_results"] = {
+                    "text_length": len(processed_doc.content),
+                    "chunks_count": 0,  # TODO: 实现分块逻辑
+                    "tables_count": len(processed_doc.tables),
+                    "images_count": len(processed_doc.images),
+                    "links_count": len(processed_doc.links)
+                }
+                
+                # 保存处理结果到文件
+                content_file = documents_dir / f"{file_id}_content.json"
+                content_data = {
+                    "content": processed_doc.content,
+                    "structure": processed_doc.structure,
+                    "tables": processed_doc.tables,
+                    "images": processed_doc.images,
+                    "links": processed_doc.links,
+                    "processed_at": datetime.now().isoformat()
+                }
+                with open(content_file, 'w', encoding='utf-8') as f:
+                    f.write(json.dumps(content_data, indent=2, ensure_ascii=False))
+            else:
+                doc_record["status"] = "failed"
+                doc_record["error"] = "No suitable processor found"
+            
+            # 保存更新后的记录
+            with open(record_file, 'w', encoding='utf-8') as f:
+                f.write(json.dumps(doc_record, indent=2, ensure_ascii=False))
+                
+        except Exception as e:
+            await _update_document_status(file_id, "failed", str(e))
 
 
 async def _process_single_document_task(file_id: str, request: DocumentProcessRequest):
@@ -568,12 +676,7 @@ async def _process_single_document_task(file_id: str, request: DocumentProcessRe
         file_id: 文档ID
         request: 处理请求
     """
-    # TODO: 实现单文档处理逻辑
-    # 1. 加载文档文件
-    # 2. 选择合适的处理器
-    # 3. 执行文档解析
-    # 4. 保存处理结果
-    pass
+    await _process_documents_task([{"id": file_id}], None)
 
 
 async def _batch_process_documents_task(file_ids: List[str], config: Optional[Dict]):
@@ -584,9 +687,29 @@ async def _batch_process_documents_task(file_ids: List[str], config: Optional[Di
         file_ids: 文档ID列表
         config: 处理配置
     """
-    # TODO: 实现批量处理逻辑
-    # 1. 并发处理多个文档
-    # 2. 进度跟踪和错误处理
-    # 3. 结果聚合和统计
-    # 4. 更新批量任务状态
-    pass
+    file_list = [{"id": file_id} for file_id in file_ids]
+    await _process_documents_task(file_list, None)
+
+
+async def _update_document_status(file_id: str, status: str, error: Optional[str] = None):
+    """
+    更新文档处理状态
+    
+    Args:
+        file_id: 文档ID
+        status: 新状态
+        error: 错误信息
+    """
+    documents_dir = Path(settings.DATABASES_DIR) / "documents"
+    record_file = documents_dir / f"{file_id}_record.json"
+    
+    if record_file.exists():
+        with open(record_file, 'r', encoding='utf-8') as f:
+            doc_record = json.loads(f.read())
+        
+        doc_record["status"] = status
+        if error:
+            doc_record["error"] = error
+            
+        with open(record_file, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(doc_record, indent=2, ensure_ascii=False))

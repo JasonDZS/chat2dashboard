@@ -37,17 +37,19 @@ def client():
             url = self.base_url + path
             
             if files:
-                # 处理文件上传
-                files_dict = {}
+                # 处理文件上传 - 使用列表格式处理多文件
+                files_list = []
                 for field_name, file_data in files:
                     filename, file_content, content_type = file_data
                     if hasattr(file_content, 'getvalue'):
                         content = file_content.getvalue()
                     else:
                         content = file_content
-                    files_dict[field_name] = (filename, content, content_type)
+                    
+                    # 每个文件作为独立的元组添加到列表中
+                    files_list.append((field_name, (filename, content, content_type)))
                 
-                response = requests.post(url, files=files_dict, data=data)
+                response = requests.post(url, files=files_list, data=data)
             elif json:
                 response = requests.post(url, json=json)
             else:

@@ -21,6 +21,9 @@ from .exceptions import (
     DatabaseNotFoundError,
     SchemaNotFoundError
 )
+from .logging import get_logger
+
+logger = get_logger()
 
 class DatabaseManager:
     

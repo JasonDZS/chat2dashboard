@@ -1,11 +1,13 @@
 """
 知识库管理API接口
 """
+import os
 from fastapi import APIRouter, HTTPException, BackgroundTasks, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from ...models.requests import (
     KnowledgeBaseCreateRequest,
@@ -25,6 +27,11 @@ from ...core.exceptions import (
     DatabaseNotFoundError,
     BuildInProgressError
 )
+from ...core.kb_builder import kb_manager
+from ...config import settings
+from ...core.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/knowledge-base", tags=["knowledge-base"])
 
@@ -41,15 +48,33 @@ async def create_knowledge_base(request: KnowledgeBaseCreateRequest):
         KnowledgeBaseResponse: 创建结果
     """
     try:
-        # TODO: 实现知识库创建逻辑
-        # 1. 验证数据源存在性
-        # 2. 创建知识库实例
-        # 3. 初始化配置参数
-        # 4. 返回创建结果
-        
         kb_id = str(uuid.uuid4())
         
-        # 暂时返回模拟响应
+        # 创建知识库目录结构
+        kb_dir = f"{settings.DATABASES_DIR}/{kb_id}"
+        os.mkdir(kb_dir) if not os.path.exists(kb_dir) else None
+        docs_dir = f"{kb_dir}/docs"
+        os.mkdir(docs_dir) if not os.path.exists(docs_dir) else None
+        
+        # 保存知识库配置
+        kb_config = {
+            "id": kb_id,
+            "name": request.name,
+            "description": request.description,
+            "datasource_id": request.datasource_id,
+            "config": request.config.model_dump() if request.config else {},
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "status": "initializing"
+        }
+        
+        config_file = f"{kb_dir}/config.json"
+        with open(config_file, 'w', encoding='utf-8') as f:
+            import json
+            json.dump(kb_config, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Created knowledge base {kb_id} with name '{request.name}'")
+        
         return KnowledgeBaseResponse(
             id=kb_id,
             name=request.name,
@@ -61,9 +86,8 @@ async def create_knowledge_base(request: KnowledgeBaseCreateRequest):
             updated_at=datetime.now()
         )
         
-    except DatabaseNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"Failed to create knowledge base: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -85,16 +109,16 @@ async def build_knowledge_base(
         KnowledgeBaseBuildResponse: 构建响应
     """
     try:
-        # TODO: 实现知识库构建逻辑
-        # 1. 验证知识库存在性
-        # 2. 检查是否正在构建中
-        # 3. 创建后台构建任务
-        # 4. 返回构建任务信息
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        task_id = str(uuid.uuid4())
+        # 启动构建任务
+        config_dict = config.model_dump() if config else None
+        task_id = await kb_manager.start_build_task(kb_id, config_dict)
         
-        # 添加后台构建任务
-        background_tasks.add_task(_build_knowledge_base_task, kb_id, config)
+        logger.info(f"Started build task {task_id} for knowledge base {kb_id}")
         
         return KnowledgeBaseBuildResponse(
             kb_id=kb_id,
@@ -110,6 +134,7 @@ async def build_knowledge_base(
     except BuildInProgressError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
+        logger.error(f"Failed to start build task: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -125,26 +150,30 @@ async def get_build_status(kb_id: str):
         Dict: 构建状态信息
     """
     try:
-        # TODO: 实现构建状态查询
-        # 1. 查询知识库构建状态
-        # 2. 获取构建进度信息
-        # 3. 返回详细状态
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
+        
+        # 获取构建状态
+        build_status = await kb_manager.get_build_status(kb_id)
         
         return JSONResponse(content={
             "kb_id": kb_id,
-            "status": "ready",  # initializing, building, ready, error
-            "progress": 100.0,
-            "entities_count": 1024,
-            "relations_count": 512,
-            "documents_count": 128,
-            "build_time": 120.5,
-            "last_updated": datetime.now().isoformat(),
-            "error_message": None
+            "status": build_status.get("status", "unknown"),
+            "progress": build_status.get("progress", 0.0),
+            "entities_count": build_status.get("entities_count", 0),
+            "relations_count": build_status.get("relations_count", 0),
+            "documents_count": build_status.get("documents_count", 0),
+            "build_time": build_status.get("build_time", 0.0),
+            "last_updated": build_status.get("last_updated"),
+            "error_message": build_status.get("error_message")
         })
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"Failed to get build status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -166,28 +195,40 @@ async def update_knowledge_base(
         Dict: 更新结果
     """
     try:
-        # TODO: 实现知识库增量更新
-        # 1. 验证知识库存在性
-        # 2. 检测数据变化
-        # 3. 创建增量更新任务
-        # 4. 返回更新状态
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        task_id = str(uuid.uuid4())
+        # 获取新文档列表
+        docs_dir = kb_dir / "docs"
+        new_documents = []
+        if docs_dir.exists():
+            supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html'}
+            for file_path in docs_dir.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                    new_documents.append(str(file_path))
         
-        # 添加后台更新任务
-        background_tasks.add_task(_update_knowledge_base_task, kb_id, request)
+        # 启动更新任务
+        task_id = await kb_manager.start_update_task(kb_id, new_documents)
+        
+        logger.info(f"Started update task {task_id} for knowledge base {kb_id}")
         
         return JSONResponse(content={
             "kb_id": kb_id,
             "task_id": task_id,
             "status": "updating",
             "message": "Knowledge base update started",
+            "documents_to_process": len(new_documents),
             "started_at": datetime.now().isoformat()
         })
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except BuildInProgressError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
+        logger.error(f"Failed to start update task: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -204,33 +245,47 @@ async def search_knowledge_base(kb_id: str, request: KnowledgeBaseSearchRequest)
         KnowledgeBaseSearchResponse: 检索结果
     """
     try:
-        # TODO: 实现知识库检索
-        # 1. 验证知识库状态
-        # 2. 根据检索类型选择检索器
-        # 3. 执行检索并排序
-        # 4. 返回检索结果
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        # 模拟检索结果
-        results = [
-            {
+        # 检查知识库是否已构建
+        build_status = await kb_manager.get_build_status(kb_id)
+        if build_status.get("status") != "ready":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Knowledge base is not ready. Current status: {build_status.get('status')}"
+            )
+        
+        # 执行搜索
+        search_result = await kb_manager.search_knowledge_base(
+            kb_id=kb_id,
+            query=request.query,
+            search_type=request.search_type,
+            top_k=request.top_k
+        )
+        
+        # 格式化搜索结果
+        results = []
+        if search_result.get("result"):
+            results.append({
                 "id": str(uuid.uuid4()),
-                "content": f"检索结果内容 {i+1}",
-                "title": f"结果标题 {i+1}",
-                "source": "document",
-                "score": 0.9 - i * 0.1,
-                "metadata": {"type": "text", "page": i+1},
-                "snippet": f"这是第{i+1}个检索结果的摘要...",
-                "highlight": [f"关键词{i+1}"],
-                "confidence": 0.95 - i * 0.05
-            }
-            for i in range(min(request.top_k, 5))
-        ]
+                "content": search_result["result"],
+                "title": f"搜索结果: {request.query}",
+                "source": "lightrag",
+                "score": 1.0,
+                "metadata": {"search_type": request.search_type},
+                "snippet": search_result["result"][:200] + "..." if len(search_result["result"]) > 200 else search_result["result"],
+                "highlight": [request.query],
+                "confidence": 0.95
+            })
         
         return KnowledgeBaseSearchResponse(
             query=request.query,
             results=results,
             total_count=len(results),
-            search_time=0.15,
+            search_time=search_result.get("search_time", 0.0),
             kb_id=kb_id,
             search_type=request.search_type
         )
@@ -238,6 +293,7 @@ async def search_knowledge_base(kb_id: str, request: KnowledgeBaseSearchRequest)
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"Knowledge base search failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -253,36 +309,53 @@ async def get_knowledge_base(kb_id: str):
         KnowledgeBaseResponse: 知识库信息
     """
     try:
-        # TODO: 实现知识库信息查询
-        # 1. 查询知识库基本信息
-        # 2. 获取统计数据
-        # 3. 返回详细信息
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
+        
+        # 读取配置文件
+        config_file = kb_dir / "config.json"
+        if config_file.exists():
+            with open(config_file, 'r', encoding='utf-8') as f:
+                import json
+                kb_config = json.load(f)
+        else:
+            kb_config = {
+                "id": kb_id,
+                "name": "Unknown",
+                "description": "",
+                "datasource_id": "unknown",
+                "config": {},
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "status": "unknown"
+            }
+        
+        # 获取构建状态
+        build_status = await kb_manager.get_build_status(kb_id)
         
         return KnowledgeBaseResponse(
             id=kb_id,
-            name="示例知识库",
-            description="这是一个示例知识库",
-            datasource_id="example-datasource",
-            status="ready",
-            config={
-                "enable_kg": True,
-                "enable_vector": True,
-                "chunk_size": 512,
-                "embedding_model": "sentence-bert"
-            },
+            name=kb_config.get("name", "Unknown"),
+            description=kb_config.get("description", ""),
+            datasource_id=kb_config.get("datasource_id", "unknown"),
+            status=build_status.get("status", "unknown"),
+            config=kb_config.get("config", {}),
             metrics=KnowledgeBaseMetrics(
-                entities_count=1024,
-                relations_count=512,
-                documents_count=128,
-                build_time=120.5
+                entities_count=build_status.get("entities_count", 0),
+                relations_count=build_status.get("relations_count", 0),
+                documents_count=build_status.get("documents_count", 0),
+                build_time=build_status.get("build_time", 0.0)
             ),
-            created_at=datetime.now(),
-            updated_at=datetime.now()
+            created_at=datetime.fromisoformat(kb_config.get("created_at", datetime.now().isoformat())),
+            updated_at=datetime.fromisoformat(build_status.get("last_updated", datetime.now().isoformat()))
         )
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"Failed to get knowledge base info: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -304,37 +377,62 @@ async def list_knowledge_bases(
         Dict: 知识库列表
     """
     try:
-        # TODO: 实现知识库列表查询
-        # 1. 查询知识库列表
-        # 2. 应用过滤条件
-        # 3. 分页处理
-        # 4. 返回列表数据
+        # 扫描知识库目录
+        databases_dir = Path(settings.DATABASES_DIR)
+        if not databases_dir.exists():
+            return JSONResponse(content={
+                "knowledge_bases": [],
+                "total_count": 0,
+                "limit": limit,
+                "offset": offset
+            })
         
-        # 模拟知识库列表
-        knowledge_bases = [
-            {
-                "id": str(uuid.uuid4()),
-                "name": f"知识库 {i+1}",
-                "description": f"这是第{i+1}个知识库",
-                "status": "ready" if i % 2 == 0 else "building",
-                "created_at": datetime.now().isoformat(),
-                "metrics": {
-                    "entities_count": (i+1) * 100,
-                    "relations_count": (i+1) * 50,
-                    "documents_count": (i+1) * 10
-                }
-            }
-            for i in range(min(limit, 3))
-        ]
+        knowledge_bases = []
+        
+        for kb_dir in databases_dir.iterdir():
+            if kb_dir.is_dir() and (kb_dir / "config.json").exists():
+                try:
+                    # 读取配置
+                    with open(kb_dir / "config.json", 'r', encoding='utf-8') as f:
+                        import json
+                        kb_config = json.load(f)
+                    
+                    # 获取构建状态
+                    build_status = await kb_manager.get_build_status(kb_dir.name)
+                    
+                    # 应用状态过滤
+                    if status and build_status.get("status") != status:
+                        continue
+                    
+                    knowledge_bases.append({
+                        "id": kb_dir.name,
+                        "name": kb_config.get("name", "Unknown"),
+                        "description": kb_config.get("description", ""),
+                        "status": build_status.get("status", "unknown"),
+                        "created_at": kb_config.get("created_at"),
+                        "metrics": {
+                            "entities_count": build_status.get("entities_count", 0),
+                            "relations_count": build_status.get("relations_count", 0),
+                            "documents_count": build_status.get("documents_count", 0)
+                        }
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to load knowledge base {kb_dir.name}: {str(e)}")
+                    continue
+        
+        # 分页处理
+        total_count = len(knowledge_bases)
+        knowledge_bases = knowledge_bases[offset:offset + limit]
         
         return JSONResponse(content={
             "knowledge_bases": knowledge_bases,
-            "total_count": len(knowledge_bases),
+            "total_count": total_count,
             "limit": limit,
             "offset": offset
         })
         
     except Exception as e:
+        logger.error(f"Failed to list knowledge bases: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -350,21 +448,21 @@ async def delete_knowledge_base(kb_id: str):
         Dict: 删除结果
     """
     try:
-        # TODO: 实现知识库删除
-        # 1. 验证知识库存在性
-        # 2. 检查是否正在使用中
-        # 3. 清理相关数据
-        # 4. 删除知识库记录
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        return JSONResponse(content={
-            "message": f"Knowledge base {kb_id} deleted successfully",
-            "kb_id": kb_id,
-            "deleted_at": datetime.now().isoformat()
-        })
+        # 删除知识库
+        result = await kb_manager.delete_knowledge_base(kb_id)
+        
+        logger.info(f"Knowledge base {kb_id} deleted successfully")
+        return JSONResponse(content=result)
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"Failed to delete knowledge base: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -380,31 +478,20 @@ async def validate_knowledge_base(kb_id: str):
         Dict: 验证结果
     """
     try:
-        # TODO: 实现知识库验证
-        # 1. 检查向量索引完整性
-        # 2. 验证知识图谱连通性
-        # 3. 检查数据一致性
-        # 4. 返回验证报告
+        # 检查知识库是否存在
+        kb_dir = Path(settings.DATABASES_DIR) / kb_id
+        if not kb_dir.exists():
+            raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        return JSONResponse(content={
-            "kb_id": kb_id,
-            "valid": True,
-            "validation_time": datetime.now().isoformat(),
-            "checks": {
-                "vector_index": {"status": "valid", "count": 1024},
-                "knowledge_graph": {"status": "valid", "entities": 512, "relations": 256},
-                "data_consistency": {"status": "valid", "errors": 0}
-            },
-            "performance_metrics": {
-                "search_latency": 0.15,
-                "index_size_mb": 45.2,
-                "memory_usage_mb": 128.5
-            }
-        })
+        # 执行验证
+        validation_result = await kb_manager.validate_knowledge_base(kb_id)
+        
+        return JSONResponse(content=validation_result)
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        logger.error(f"Knowledge base validation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -418,11 +505,8 @@ async def _build_knowledge_base_task(kb_id: str, config: Optional[BuildConfigReq
         kb_id: 知识库ID
         config: 构建配置
     """
-    # TODO: 实现后台构建逻辑
-    # 1. 初始化知识库构建器
-    # 2. 执行数据处理和向量化
-    # 3. 构建知识图谱
-    # 4. 更新构建状态
+    # 这个函数已经被 kb_manager.start_build_task 替代
+    # 保留为兼容性占位符
     pass
 
 
@@ -434,9 +518,6 @@ async def _update_knowledge_base_task(kb_id: str, request: KnowledgeBaseUpdateRe
         kb_id: 知识库ID
         request: 更新请求
     """
-    # TODO: 实现后台更新逻辑
-    # 1. 检测数据变化
-    # 2. 增量处理新数据
-    # 3. 更新向量索引和知识图谱
-    # 4. 更新状态信息
+    # 这个函数已经被 kb_manager.start_update_task 替代
+    # 保留为兼容性占位符
     pass

@@ -1,8 +1,102 @@
 import sqlite3
 import json
 import datetime
+import logging
+import sys
+import os
 from typing import Optional, Dict, Any
 from pathlib import Path
+
+class AppLogger:
+    """
+    通用应用日志类，支持显示调用脚本名称
+    """
+    _loggers = {}
+    _configured = False
+    
+    @classmethod
+    def configure(cls, log_level: str = "INFO", log_format: str = None):
+        """配置全局日志设置"""
+        if cls._configured:
+            return
+            
+        if log_format is None:
+            log_format = "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s"
+        
+        # 创建logs目录
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        
+        # 设置根logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+        
+        # 清除已有的处理器
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        
+        # 控制台处理器
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+        console_formatter = logging.Formatter(log_format)
+        console_handler.setFormatter(console_formatter)
+        root_logger.addHandler(console_handler)
+        
+        # 文件处理器
+        file_handler = logging.FileHandler(logs_dir / "app.log", encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter(log_format)
+        file_handler.setFormatter(file_formatter)
+        root_logger.addHandler(file_handler)
+        
+        cls._configured = True
+    
+    @classmethod
+    def get_logger(cls, name: str = None):
+        """
+        获取logger实例
+        
+        Args:
+            name: logger名称，如果为None则自动获取调用者的文件名
+        """
+        if not cls._configured:
+            cls.configure()
+        
+        if name is None:
+            # 自动获取调用者的文件名
+            frame = sys._getframe(1)
+            filename = os.path.basename(frame.f_code.co_filename)
+            name = os.path.splitext(filename)[0]
+        
+        if name not in cls._loggers:
+            logger = logging.getLogger(name)
+            cls._loggers[name] = logger
+        
+        return cls._loggers[name]
+
+
+# 便捷函数，直接获取当前文件的logger
+def get_logger(name: str = None):
+    """
+    获取logger的便捷函数
+    
+    Usage:
+        from app.core.logging import get_logger
+        logger = get_logger()  # 自动使用当前文件名
+        logger.info("这是一条日志")
+        
+        # 或者指定名称
+        logger = get_logger("custom_name")
+        logger.debug("调试信息")
+    """
+    if name is None:
+        # 自动获取调用者的文件名
+        frame = sys._getframe(1)
+        filename = os.path.basename(frame.f_code.co_filename)
+        name = os.path.splitext(filename)[0]
+    
+    return AppLogger.get_logger(name)
+
 
 class RequestLogger:
     def __init__(self, db_path: str = "logs/requests.db"):

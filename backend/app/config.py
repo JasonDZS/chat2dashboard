@@ -10,7 +10,7 @@ class Settings:
     APP_VERSION: str = "0.1.0"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    LOG_LEVEL: str = "debug"
+    LOG_LEVEL: str = "debug"  # Options: "debug", "info", "warning", "error", "critical"
     
     # CORS settings
     CORS_ORIGINS: List[str] = ["*"]
@@ -45,3 +45,9 @@ class Settings:
         return os.path.abspath(self.TEMPLATES_DIR)
 
 settings = Settings()
+
+# 初始化日志配置
+def init_logging():
+    """初始化应用日志配置"""
+    from .core.logging import AppLogger
+    AppLogger.configure(log_level=settings.LOG_LEVEL.upper())

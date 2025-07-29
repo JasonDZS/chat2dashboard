@@ -22,6 +22,8 @@ dependencies = [
     "pytest-asyncio>=1.1.0",
     "httpx>=0.28.1",
     "pytest-mock>=3.14.1",
+    "aiofiles>=24.1.0",
+    "lightrag-hku>=1.4.4",
 ]
 
 [project.optional-dependencies]

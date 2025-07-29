@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 import mimetypes
 from pathlib import Path
+from datetime import datetime
 
 
 class DocumentType(Enum):
@@ -67,12 +68,8 @@ class BaseDocumentProcessor(ABC):
         Returns:
             bool: 是否支持
         """
-        # TODO: 实现格式支持检查
-        # 1. 检查文件扩展名
-        # 2. 检查MIME类型
-        # 3. 检查文件头部签名
-        # 4. 验证文件完整性
-        pass
+        file_ext = Path(file_path).suffix.lower()
+        return file_ext in self.supported_formats
     
     @abstractmethod
     def extract_text(self, file_path: str) -> str:
@@ -141,14 +138,21 @@ class BaseDocumentProcessor(ABC):
         Returns:
             ProcessedDocument: 处理结果
         """
-        # TODO: 实现文档处理主流程
-        # 1. 验证文件有效性
-        # 2. 提取文本内容
-        # 3. 提取元数据
-        # 4. 提取结构信息
-        # 5. 提取表格和图片
-        # 6. 合并处理结果
-        pass
+        if not self.validate_file(file_path):
+            raise ValueError(f"Invalid file: {file_path}")
+        
+        content = self.extract_text(file_path)
+        metadata = self.extract_metadata(file_path)
+        structure = self.extract_structure(file_path)
+        
+        return ProcessedDocument(
+            content=content,
+            metadata=metadata,
+            structure=structure,
+            tables=[],  # Will be implemented by subclasses
+            images=[],  # Will be implemented by subclasses
+            links=[]    # Will be implemented by subclasses
+        )
     
     def validate_file(self, file_path: str) -> bool:
         """
@@ -160,13 +164,12 @@ class BaseDocumentProcessor(ABC):
         Returns:
             bool: 文件是否有效
         """
-        # TODO: 实现文件验证
-        # 1. 检查文件是否存在
-        # 2. 检查文件大小限制
-        # 3. 检查文件权限
-        # 4. 检查文件格式
-        # 5. 病毒扫描（可选）
-        pass
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            return False
+        if file_path_obj.stat().st_size > self.max_file_size:
+            return False
+        return self.can_process(file_path)
 
 
 class PDFProcessor(BaseDocumentProcessor):
@@ -175,6 +178,33 @@ class PDFProcessor(BaseDocumentProcessor):
     def __init__(self):
         super().__init__()
         self.supported_formats = {'.pdf'}
+    
+    def extract_text(self, file_path: str) -> str:
+        """Extract text from PDF"""
+        # Basic implementation - would need PyPDF2 or similar
+        return f"PDF content from {Path(file_path).name} (processing not fully implemented)"
+    
+    def extract_metadata(self, file_path: str) -> DocumentMetadata:
+        """Extract PDF metadata"""
+        file_path_obj = Path(file_path)
+        stat = file_path_obj.stat()
+        
+        return DocumentMetadata(
+            file_path=file_path,
+            file_name=file_path_obj.name,
+            file_size=stat.st_size,
+            doc_type=DocumentType.PDF,
+            created_time=datetime.fromtimestamp(stat.st_ctime).isoformat(),
+            modified_time=datetime.fromtimestamp(stat.st_mtime).isoformat()
+        )
+    
+    def extract_structure(self, file_path: str) -> Dict[str, Any]:
+        """Extract PDF structure"""
+        return {
+            "pages": 1,  # Placeholder
+            "bookmarks": [],
+            "text_blocks": []
+        }
     
     def extract_text_with_layout(self, file_path: str) -> Dict[str, Any]:
         """
@@ -238,6 +268,33 @@ class DocxProcessor(BaseDocumentProcessor):
         super().__init__()
         self.supported_formats = {'.docx', '.doc'}
     
+    def extract_text(self, file_path: str) -> str:
+        """Extract text from DOCX"""
+        # Basic implementation - would need python-docx
+        return f"DOCX content from {Path(file_path).name} (processing not fully implemented)"
+    
+    def extract_metadata(self, file_path: str) -> DocumentMetadata:
+        """Extract DOCX metadata"""
+        file_path_obj = Path(file_path)
+        stat = file_path_obj.stat()
+        
+        return DocumentMetadata(
+            file_path=file_path,
+            file_name=file_path_obj.name,
+            file_size=stat.st_size,
+            doc_type=DocumentType.DOCX,
+            created_time=datetime.fromtimestamp(stat.st_ctime).isoformat(),
+            modified_time=datetime.fromtimestamp(stat.st_mtime).isoformat()
+        )
+    
+    def extract_structure(self, file_path: str) -> Dict[str, Any]:
+        """Extract DOCX structure"""
+        return {
+            "headings": [],
+            "paragraphs": [],
+            "tables": []
+        }
+    
     def extract_styles(self, file_path: str) -> Dict[str, Any]:
         """
         提取文档样式信息
@@ -280,7 +337,73 @@ class TextProcessor(BaseDocumentProcessor):
     
     def __init__(self):
         super().__init__()
-        self.supported_formats = {'.txt', '.md', '.markdown'}
+        self.supported_formats = {'.txt', '.md', '.markdown', '.html'}
+    
+    def extract_text(self, file_path: str) -> str:
+        """
+        提取文档文本内容
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            str: 提取的文本内容
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except UnicodeDecodeError:
+            # Try with different encodings
+            for encoding in ['gbk', 'gb2312', 'latin-1']:
+                try:
+                    with open(file_path, 'r', encoding=encoding) as f:
+                        return f.read()
+                except UnicodeDecodeError:
+                    continue
+            return ""
+    
+    def extract_metadata(self, file_path: str) -> DocumentMetadata:
+        """
+        提取文档元数据
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            DocumentMetadata: 文档元数据
+        """
+        file_path_obj = Path(file_path)
+        stat = file_path_obj.stat()
+        content = self.extract_text(file_path)
+        
+        return DocumentMetadata(
+            file_path=file_path,
+            file_name=file_path_obj.name,
+            file_size=stat.st_size,
+            doc_type=DocumentType.TXT,
+            word_count=len(content.split()),
+            created_time=datetime.fromtimestamp(stat.st_ctime).isoformat(),
+            modified_time=datetime.fromtimestamp(stat.st_mtime).isoformat()
+        )
+    
+    def extract_structure(self, file_path: str) -> Dict[str, Any]:
+        """
+        提取文档结构信息
+        
+        Args:
+            file_path: 文件路径
+            
+        Returns:
+            Dict[str, Any]: 文档结构
+        """
+        content = self.extract_text(file_path)
+        lines = content.split('\n')
+        
+        return {
+            "total_lines": len(lines),
+            "non_empty_lines": len([line for line in lines if line.strip()]),
+            "paragraphs": [line.strip() for line in lines if line.strip()]
+        }
     
     def detect_encoding(self, file_path: str) -> str:
         """
@@ -292,13 +415,22 @@ class TextProcessor(BaseDocumentProcessor):
         Returns:
             str: 编码格式
         """
-        # TODO: 实现编码检测
-        # 1. 读取文件头部字节
-        # 2. 检测BOM标记
-        # 3. 使用chardet库检测
-        # 4. 验证检测结果
-        # 5. 提供编码建议
-        pass
+        # Simple encoding detection
+        try:
+            with open(file_path, 'rb') as f:
+                raw_data = f.read(1000)  # Read first 1000 bytes
+            
+            # Check for BOM
+            if raw_data.startswith(b'\xef\xbb\xbf'):
+                return 'utf-8-sig'
+            elif raw_data.startswith(b'\xff\xfe'):
+                return 'utf-16-le'
+            elif raw_data.startswith(b'\xfe\xff'):
+                return 'utf-16-be'
+            
+            return 'utf-8'
+        except Exception:
+            return 'utf-8'
     
     def parse_markdown(self, content: str) -> Dict[str, Any]:
         """
@@ -330,7 +462,7 @@ class DocumentProcessorFactory:
             DocumentType.MARKDOWN: TextProcessor,
         }
     
-    def get_processor(self, file_path: str) -> BaseDocumentProcessor:
+    def get_processor(self, file_path: str) -> Optional[BaseDocumentProcessor]:
         """
         根据文件类型获取对应处理器
         
@@ -340,13 +472,15 @@ class DocumentProcessorFactory:
         Returns:
             BaseDocumentProcessor: 文档处理器实例
         """
-        # TODO: 实现处理器选择
-        # 1. 检测文件类型
-        # 2. 查找对应处理器
-        # 3. 创建处理器实例
-        # 4. 配置处理参数
-        # 5. 返回处理器对象
-        pass
+        doc_type = self.detect_document_type(file_path)
+        processor_class = self.processors.get(doc_type)
+        
+        if processor_class:
+            processor = processor_class()
+            if processor.can_process(file_path):
+                return processor
+        
+        return None
     
     def register_processor(self, doc_type: DocumentType, processor_class):
         """
@@ -374,13 +508,20 @@ class DocumentProcessorFactory:
         Returns:
             DocumentType: 文档类型
         """
-        # TODO: 实现文档类型检测
-        # 1. 检查文件扩展名
-        # 2. 检查MIME类型
-        # 3. 检查文件魔数
-        # 4. 内容格式推断
-        # 5. 返回最可能的类型
-        pass
+        file_ext = Path(file_path).suffix.lower()
+        
+        if file_ext == '.pdf':
+            return DocumentType.PDF
+        elif file_ext in ['.docx', '.doc']:
+            return DocumentType.DOCX
+        elif file_ext == '.txt':
+            return DocumentType.TXT
+        elif file_ext in ['.md', '.markdown']:
+            return DocumentType.MARKDOWN
+        elif file_ext == '.html':
+            return DocumentType.HTML
+        else:
+            return DocumentType.UNKNOWN
 
 
 class BatchDocumentProcessor:
