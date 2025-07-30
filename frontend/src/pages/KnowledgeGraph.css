@@ -35,12 +35,12 @@
 }
 
 .page-header::before {
-  content: '🕸️';
+  content: '🌟';
   position: absolute;
   top: -15px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 24px;
+  font-size: 14px;
   background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
   padding: 8px;
   border-radius: 50%;
