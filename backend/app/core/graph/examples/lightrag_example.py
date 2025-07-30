@@ -5,24 +5,25 @@ LightRAG知识图谱构建器使用示例
 """
 import os
 import sys
+import asyncio
 from pathlib import Path
 
 # 添加项目根目录到Python路径
-project_root = Path(__file__).parent.parent.parent.parent.parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.app.core.graph import (
+from src import (
     create_lightrag_graph_builder,
     LightRAGGraphBuilder
 )
 
 
-def basic_usage_example():
+async def basic_usage_example():
     """基本使用示例"""
     print("=== LightRAG知识图谱构建器基本使用示例 ===")
     
     # 1. 创建LightRAG构建器
-    builder = create_lightrag_graph_builder("./example_lightrag_storage")
+    builder = create_lightrag_graph_builder("./workdir/example_lightrag_storage")
     
     # 2. 准备示例文档
     documents = [
@@ -46,7 +47,7 @@ def basic_usage_example():
     try:
         # 3. 构建知识图谱
         print("正在构建知识图谱...")
-        graph = builder.build_graph(texts=documents, graph_name="示例知识图谱")
+        graph = await builder.build_graph(texts=documents, graph_name="示例知识图谱")
         
         print(f"构建完成! 实体数量: {len(graph.entities)}, 关系数量: {len(graph.relations)}")
         
@@ -70,9 +71,12 @@ def basic_usage_example():
     except Exception as e:
         print(f"构建过程中出现错误: {e}")
         return None
+    finally:
+        # 在这里不清理资源，因为我们要返回builder供后续使用
+        pass
 
 
-def search_example(builder: LightRAGGraphBuilder):
+async def search_example(builder: LightRAGGraphBuilder):
     """搜索示例"""
     print("=== 知识图谱搜索示例 ===")
     
@@ -93,7 +97,7 @@ def search_example(builder: LightRAGGraphBuilder):
             print(f"\n查询: {query}")
             print(f"搜索类型: {search_type}")
             
-            result = builder.search_graph(query, search_type)
+            result = await builder.search_graph(query, search_type)
             
             print("搜索结果:")
             print(result.get("result", "无结果")[:200] + "...")
@@ -103,7 +107,7 @@ def search_example(builder: LightRAGGraphBuilder):
             print(f"搜索失败: {e}")
 
 
-def incremental_update_example(builder: LightRAGGraphBuilder):
+async def incremental_update_example(builder: LightRAGGraphBuilder):
     """增量更新示例"""
     print("=== 增量更新示例 ===")
     
@@ -127,20 +131,20 @@ def incremental_update_example(builder: LightRAGGraphBuilder):
     
     try:
         print("正在添加新文档到知识图谱...")
-        updated_graph = builder.add_documents(new_documents, "更新后的示例知识图谱")
+        updated_graph = await builder.add_documents(new_documents, "更新后的示例知识图谱")
         
         print(f"更新完成! 新的实体数量: {len(updated_graph.entities)}, 关系数量: {len(updated_graph.relations)}")
         
         # 测试搜索新添加的内容
         print("\n测试搜索新内容:")
-        result = builder.search_graph("上海是什么样的城市？", "hybrid")
+        result = await builder.search_graph("上海是什么样的城市？", "hybrid")
         print("搜索结果:", result.get("result", "无结果")[:200] + "...")
         
     except Exception as e:
         print(f"更新过程中出现错误: {e}")
 
 
-def export_example(builder: LightRAGGraphBuilder):
+async def export_example(builder: LightRAGGraphBuilder):
     """导出示例"""
     print("=== 导出GraphML示例 ===")
     
@@ -173,7 +177,7 @@ def export_example(builder: LightRAGGraphBuilder):
         print(f"导出过程中出现错误: {e}")
 
 
-def statistics_example(builder: LightRAGGraphBuilder):
+async def statistics_example(builder: LightRAGGraphBuilder):
     """统计信息示例"""
     print("=== 图谱统计信息示例 ===")
     
@@ -182,7 +186,7 @@ def statistics_example(builder: LightRAGGraphBuilder):
         return
     
     try:
-        stats = builder.get_graph_statistics()
+        stats = await builder.get_graph_statistics()
         
         print("图谱统计信息:")
         print(f"- 实体数量: {stats.get('entities_count', 0)}")
@@ -198,12 +202,12 @@ def statistics_example(builder: LightRAGGraphBuilder):
         print(f"获取统计信息时出现错误: {e}")
 
 
-def advanced_usage_example():
+async def advanced_usage_example():
     """高级使用示例"""
     print("=== LightRAG高级使用示例 ===")
     
     # 创建自定义配置的构建器
-    custom_builder = LightRAGGraphBuilder("./custom_lightrag_storage")
+    custom_builder = LightRAGGraphBuilder("./workdir/custom_lightrag_storage")
     
     # 模拟处理大量文档
     print("模拟处理多个文档类型...")
@@ -230,42 +234,49 @@ def advanced_usage_example():
             print(f"处理{category}...")
             all_texts.extend(texts)
         
-        graph = custom_builder.build_graph(texts=all_texts, graph_name="综合知识图谱")
+        graph = await custom_builder.build_graph(texts=all_texts, graph_name="综合知识图谱")
         print(f"综合图谱构建完成: {len(graph.entities)} 实体, {len(graph.relations)} 关系")
         
         # 获取详细统计
-        stats = custom_builder.get_graph_statistics()
+        stats = await custom_builder.get_graph_statistics()
         print("详细统计:", stats)
         
     except Exception as e:
         print(f"高级示例执行失败: {e}")
+    finally:
+        # 清理高级示例的资源
+        await custom_builder.cleanup()
 
 
-def main():
+async def main():
     """主函数"""
     print("LightRAG知识图谱构建器完整示例")
     print("=" * 50)
     
     # 1. 基本使用示例
-    builder = basic_usage_example()
+    builder = await basic_usage_example()
     
     # 2. 搜索示例
-    search_example(builder)
+    await search_example(builder)
     
     # 3. 增量更新示例
-    incremental_update_example(builder)
+    await incremental_update_example(builder)
     
     # 4. 导出示例
-    export_example(builder)
+    await export_example(builder)
     
     # 5. 统计信息示例
-    statistics_example(builder)
+    await statistics_example(builder)
     
     # 6. 高级使用示例
-    advanced_usage_example()
+    await advanced_usage_example()
     
     print("\n所有示例执行完成!")
+    
+    # 清理主要builder的资源
+    if builder:
+        await builder.cleanup()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

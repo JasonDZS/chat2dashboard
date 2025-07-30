@@ -6,7 +6,7 @@ LightRAG知识图谱构建器
 """
 import os
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Literal
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +16,7 @@ from ..entities import Entity
 from ..relations import Relation
 from ..graph import KnowledgeGraph
 from ..types import EntityType, RelationType
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,73 +28,76 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
         super().__init__()
         self.working_dir = Path(working_dir)
         self.rag_instance = None
-        self._init_lightrag()
     
-    def _init_lightrag(self):
+    async def initialize_lightrag(self):
         """初始化LightRAG实例"""
+        if self.rag_instance is not None:
+            return self.rag_instance
+            
         try:
             # 延迟导入LightRAG以避免依赖问题
             from lightrag import LightRAG
             from lightrag.utils import EmbeddingFunc
+            from lightrag.llm.openai import openai_embed, openai_complete_if_cache
+            from lightrag.kg.shared_storage import initialize_pipeline_status
             
             # 确保工作目录存在
             self.working_dir.mkdir(parents=True, exist_ok=True)
             
+            # 创建自定义LLM函数
+            async def custom_llm_complete(
+                prompt: str,
+                system_prompt: str = None,
+                history_messages: list = None,
+                **kwargs
+            ):
+                return await openai_complete_if_cache(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    history_messages=history_messages or [],
+                    model=Settings.LLM_MODEL,
+                    base_url=Settings.OPENAI_API_BASE,
+                    api_key=Settings.OPENAI_API_KEY,
+                    **kwargs
+                )
+            
+            # 创建自定义嵌入函数
+            async def custom_embed(texts: list):
+                return await openai_embed(
+                    texts,
+                    model=Settings.EMBEDDING_MODEL,
+                    base_url=Settings.OPENAI_API_BASE,
+                    api_key=Settings.OPENAI_API_KEY
+                )
+            
             # 初始化LightRAG实例
             self.rag_instance = LightRAG(
                 working_dir=str(self.working_dir),
-                llm_model_func=self._llm_model_func,
+                llm_model_func=custom_llm_complete,
                 embedding_func=EmbeddingFunc(
-                    embedding_dim=384,  # 默认嵌入维度
-                    max_token_size=8192,
-                    func=self._embedding_func
-                )
+                    embedding_dim=Settings.EMBEDDING_DIM,
+                    max_token_size=Settings.EMBEDDING_MAX_TOKEN_SIZE,
+                    func=custom_embed
+                ),
             )
             
+            # 重要：两个初始化调用都是必需的！
+            await self.rag_instance.initialize_storages()  # 初始化存储后端
+            await initialize_pipeline_status()  # 初始化处理管道
+            
             logger.info(f"LightRAG initialized with working directory: {self.working_dir}")
+            return self.rag_instance
             
         except ImportError:
             logger.error("LightRAG not installed. Please install with: pip install lightrag")
             self.rag_instance = None
+            raise
         except Exception as e:
             logger.error(f"Failed to initialize LightRAG: {e}")
             self.rag_instance = None
+            raise
     
-    def _llm_model_func(self, prompt: str, system_prompt: str = None, 
-                       history_messages: List = None, **kwargs) -> str:
-        """
-        LLM模型函数，需要根据实际的LLM服务实现
-        
-        Args:
-            prompt: 用户提示
-            system_prompt: 系统提示
-            history_messages: 历史消息
-            **kwargs: 其他参数
-            
-        Returns:
-            str: LLM响应
-        """
-        # 这里需要根据实际使用的LLM服务实现
-        # 例如OpenAI API、本地模型等
-        logger.warning("LLM model function not implemented, using placeholder")
-        return f"Mock LLM response for: {prompt[:100]}..."
-    
-    def _embedding_func(self, texts: List[str]) -> List[List[float]]:
-        """
-        嵌入函数，需要根据实际的嵌入服务实现
-        
-        Args:
-            texts: 文本列表
-            
-        Returns:
-            List[List[float]]: 嵌入向量列表
-        """
-        # 这里需要根据实际使用的嵌入服务实现
-        logger.warning("Embedding function not implemented, using placeholder")
-        import numpy as np
-        return [np.random.random(384).tolist() for _ in texts]
-    
-    def build_graph(self, 
+    async def build_graph(self,
                    texts: List[str] = None, 
                    database_schema: Dict[str, Any] = None,
                    graph_name: str = "lightrag_graph") -> KnowledgeGraph:
@@ -108,18 +112,21 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
         Returns:
             KnowledgeGraph: 构建的知识图谱
         """
+        # 初始化RAG实例
+        await self.initialize_lightrag()
+        
         if not self.rag_instance:
             raise RuntimeError("LightRAG not initialized")
         
         try:
             logger.info(f"Building knowledge graph with LightRAG: {graph_name}")
-            
+
             # 处理文本输入
             if texts:
                 for i, text in enumerate(texts):
                     logger.info(f"Inserting text document {i+1}/{len(texts)}")
-                    # 使用同步版本插入文档
-                    self.rag_instance.insert(text)
+                    # 使用异步版本插入文档
+                    await self.rag_instance.ainsert(text)
             
             # 等待LightRAG处理完成并生成GraphML文件
             graphml_file = self.working_dir / "graph_chunk_entity_relation.graphml"
@@ -137,7 +144,7 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
             logger.error(f"Error building graph with LightRAG: {e}")
             raise
     
-    def update_graph(self, graph: KnowledgeGraph, 
+    async def update_graph(self, graph: KnowledgeGraph, 
                     new_entities: List[Entity] = None,
                     new_relations: List[Relation] = None) -> KnowledgeGraph:
         """
@@ -155,7 +162,7 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
         logger.info("To update the graph, please add new documents using build_graph with texts")
         return graph
     
-    def add_documents(self, documents: List[str], graph_name: str = None) -> KnowledgeGraph:
+    async def add_documents(self, documents: List[str], graph_name: str = None) -> KnowledgeGraph:
         """
         添加新文档到现有知识图谱
         
@@ -166,6 +173,9 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
         Returns:
             KnowledgeGraph: 更新后的知识图谱
         """
+        # 初始化RAG实例
+        await self.initialize_lightrag()
+        
         if not self.rag_instance:
             raise RuntimeError("LightRAG not initialized")
         
@@ -174,7 +184,7 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
             
             for i, doc in enumerate(documents):
                 logger.info(f"Adding document {i+1}/{len(documents)}")
-                self.rag_instance.insert(doc)
+                await self.rag_instance.ainsert(doc)
             
             # 重新加载图谱
             graphml_file = self.working_dir / "graph_chunk_entity_relation.graphml"
@@ -190,7 +200,7 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
             logger.error(f"Error adding documents: {e}")
             raise
     
-    def search_graph(self, query: str, search_type: str = "hybrid") -> Dict[str, Any]:
+    async def search_graph(self, query: str, search_type: Literal["naive", "local", "global", "hybrid"] = "hybrid") -> Dict[str, Any]:
         """
         在知识图谱中搜索
         
@@ -201,6 +211,9 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
         Returns:
             Dict[str, Any]: 搜索结果
         """
+        # 初始化RAG实例
+        await self.initialize_lightrag()
+        
         if not self.rag_instance:
             raise RuntimeError("LightRAG not initialized")
         
@@ -208,14 +221,9 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
             logger.info(f"Searching graph with query: {query}, type: {search_type}")
             
             # 根据搜索类型调用相应的查询方法
-            if search_type == "naive":
-                result = self.rag_instance.query(query, param={"mode": "naive"})
-            elif search_type == "local":
-                result = self.rag_instance.query(query, param={"mode": "local"})
-            elif search_type == "global":
-                result = self.rag_instance.query(query, param={"mode": "global"})
-            else:  # hybrid
-                result = self.rag_instance.query(query, param={"mode": "hybrid"})
+            from lightrag import QueryParam
+            param = QueryParam(mode=search_type)
+            result = await self.rag_instance.aquery(query, param=param)
             
             return {
                 "query": query,
@@ -227,6 +235,19 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
         except Exception as e:
             logger.error(f"Error searching graph: {e}")
             raise
+    
+    async def cleanup(self):
+        """
+        清理LightRAG资源
+        """
+        if self.rag_instance:
+            try:
+                await self.rag_instance.finalize_storages()
+                logger.info("LightRAG resources cleaned up")
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}")
+            finally:
+                self.rag_instance = None
     
     def _load_graph_from_graphml(self, graphml_file: str, graph_name: str) -> KnowledgeGraph:
         """
@@ -518,7 +539,7 @@ class LightRAGGraphBuilder(BaseKnowledgeGraphBuilder):
             logger.error(f"Error exporting graph to GraphML: {e}")
             return False
     
-    def get_graph_statistics(self) -> Dict[str, Any]:
+    async def get_graph_statistics(self) -> Dict[str, Any]:
         """
         获取图谱统计信息
         
