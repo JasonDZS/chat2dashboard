@@ -1,6 +1,8 @@
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from typing import List
+import os
+import shutil
 
 from ...core.database import DatabaseManager
 from ...core.exceptions import (
@@ -42,6 +44,7 @@ async def upload_data_files(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/schema/{db_name}", response_model=DatabaseSchema)
 async def get_database_schema(db_name: str):

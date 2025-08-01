@@ -4,8 +4,11 @@ from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 
-from .config import settings
+from .config import settings, init_logging
 from .api.v1.routes import api_router
+
+# 初始化日志配置
+init_logging()
 
 app = FastAPI(
     title=settings.APP_TITLE,

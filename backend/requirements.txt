@@ -1,4 +1,5 @@
 fastapi==0.104.1
+starlette==0.27.0
 jinja2==3.1.2
 psutil>=7.0.0
 pydantic==2.5.0
@@ -11,3 +12,11 @@ tiktoken>=0.9.0
 openai>=1.97.1
 tenacity>=9.1.2
 vanna[chromadb,openai]>=0.7.9
+aiofiles>=23.0.0
+
+# Test dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+httpx==0.24.1
+pytest-mock>=3.10.0
+requests>=2.31.0

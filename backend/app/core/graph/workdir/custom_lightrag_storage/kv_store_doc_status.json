@@ -1,0 +1,145 @@
+{
+  "doc-7d8cdb91e4513e42bfb35eaa6009c099": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-7d8cdb91e4513e42bfb35eaa6009c099"
+    ],
+    "content": "北京是中华人民共和国的首都，位于华北地区。作为中国的政治、文化、国际交往、\n        科技创新中心，北京有着3000多年建城史和860多年建都史。北京市下辖16个区，\n        总面积16410.54平方千米。2022年末，北京市常住人口2184.3万人。",
+    "content_summary": "北京是中华人民共和国的首都，位于华北地区。作为中国的政治、文化、国际交往、\n        科技创新中心，北京有着3000多年建城史和860多年建都史。北京市下辖16个区，\n        总面积16410.54平方千米。2022年末，北京市常住人口2184.3万人。",
+    "content_length": 134,
+    "created_at": "2025-07-30T03:53:12.452771+00:00",
+    "updated_at": "2025-07-30T04:12:57.927984+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-fd612cd5b5d866f19bd6e827f01b8d49": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-fd612cd5b5d866f19bd6e827f01b8d49"
+    ],
+    "content": "清华大学是中国著名的高等学府，位于北京市海淀区。学校创建于1911年，\n        是中国九校联盟成员，被誉为\"红色工程师的摇篮\"。清华大学在工程技术、\n        自然科学、经济管理、人文社科等多个学科领域都有很强的实力。",
+    "content_summary": "清华大学是中国著名的高等学府，位于北京市海淀区。学校创建于1911年，\n        是中国九校联盟成员，被誉为\"红色工程师的摇篮\"。清华大学在工程技术、\n        自然科学、经济管理、人文社科等多个学科领域都有很强的实力。",
+    "content_length": 116,
+    "created_at": "2025-07-30T04:12:57.934852+00:00",
+    "updated_at": "2025-07-30T04:13:44.150437+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-ada5beaf8e8fd002538c3f772e1c2f53": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-ada5beaf8e8fd002538c3f772e1c2f53"
+    ],
+    "content": "人工智能是计算机科学的一个分支，它企图了解智能的实质，并生产出一种\n        新的能以人类智能相似的方式做出反应的智能机器。人工智能包括机器学习、\n        深度学习、自然语言处理、计算机视觉等多个子领域。",
+    "content_summary": "人工智能是计算机科学的一个分支，它企图了解智能的实质，并生产出一种\n        新的能以人类智能相似的方式做出反应的智能机器。人工智能包括机器学习、\n        深度学习、自然语言处理、计算机视觉等多个子领域。",
+    "content_length": 109,
+    "created_at": "2025-07-30T04:13:44.215846+00:00",
+    "updated_at": "2025-07-30T04:14:50.444662+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-0bd6d6c10234109e6a937b1fc319aed4": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-0bd6d6c10234109e6a937b1fc319aed4"
+    ],
+    "content": "上海是中华人民共和国的直辖市，位于长江三角洲地区。作为中国的经济中心，\n        上海是全球著名的金融中心之一。上海港是世界上最繁忙的集装箱港口之一。\n        上海有着深厚的历史文化底蕴，同时也是现代化国际大都市。",
+    "content_summary": "上海是中华人民共和国的直辖市，位于长江三角洲地区。作为中国的经济中心，\n        上海是全球著名的金融中心之一。上海港是世界上最繁忙的集装箱港口之一。\n        上海有着深厚的历史文化底蕴，同时也是现代化国际大都市。",
+    "content_length": 114,
+    "created_at": "2025-07-30T04:15:59.943336+00:00",
+    "updated_at": "2025-07-30T04:17:16.942935+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-bdca7d84154590f445b4cc732cea580f": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-bdca7d84154590f445b4cc732cea580f"
+    ],
+    "content": "机器学习是人工智能的一个重要分支，它使计算机能够无需明确编程即可学习。\n        机器学习算法包括监督学习、无监督学习和强化学习等类型。深度学习是机器学习\n        的一个子领域，使用神经网络来模拟人脑的工作方式。",
+    "content_summary": "机器学习是人工智能的一个重要分支，它使计算机能够无需明确编程即可学习。\n        机器学习算法包括监督学习、无监督学习和强化学习等类型。深度学习是机器学习\n        的一个子领域，使用神经网络来模拟人脑的工作方式。",
+    "content_length": 113,
+    "created_at": "2025-07-30T04:17:16.964564+00:00",
+    "updated_at": "2025-07-30T04:17:59.979014+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-545c2da48a7798e54563a392e0ff4e6c": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-545c2da48a7798e54563a392e0ff4e6c"
+    ],
+    "content": "Python是一种高级编程语言，具有简洁的语法和强大的功能。",
+    "content_summary": "Python是一种高级编程语言，具有简洁的语法和强大的功能。",
+    "content_length": 30,
+    "created_at": "2025-07-30T04:26:59.310225+00:00",
+    "updated_at": "2025-07-30T04:27:13.021378+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-0c48872bddb4e6f2f1b9cc635665461c": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-0c48872bddb4e6f2f1b9cc635665461c"
+    ],
+    "content": "Docker是一个开源的应用容器引擎，让开发者可以打包应用。",
+    "content_summary": "Docker是一个开源的应用容器引擎，让开发者可以打包应用。",
+    "content_length": 30,
+    "created_at": "2025-07-30T04:27:13.039381+00:00",
+    "updated_at": "2025-07-30T04:27:30.640536+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-3b21d372f849030f3cc83832df459b57": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-3b21d372f849030f3cc83832df459b57"
+    ],
+    "content": "我们公司专注于人工智能和大数据分析服务。",
+    "content_summary": "我们公司专注于人工智能和大数据分析服务。",
+    "content_length": 20,
+    "created_at": "2025-07-30T04:27:30.649995+00:00",
+    "updated_at": "2025-07-30T04:28:03.984916+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-288a0840cce5ef06e69d5c8224580e95": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-288a0840cce5ef06e69d5c8224580e95"
+    ],
+    "content": "客户满意度是我们最重要的业务指标之一。",
+    "content_summary": "客户满意度是我们最重要的业务指标之一。",
+    "content_length": 19,
+    "created_at": "2025-07-30T04:28:04.029692+00:00",
+    "updated_at": "2025-07-30T04:28:22.221502+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-81422b3643bbb82562a8d04f7432844a": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-81422b3643bbb82562a8d04f7432844a"
+    ],
+    "content": "深度学习在计算机视觉领域取得了显著进展。",
+    "content_summary": "深度学习在计算机视觉领域取得了显著进展。",
+    "content_length": 20,
+    "created_at": "2025-07-30T04:28:22.231692+00:00",
+    "updated_at": "2025-07-30T04:28:46.545961+00:00",
+    "file_path": "unknown_source"
+  },
+  "doc-560a91d01d69d930c4449d41951a1503": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-560a91d01d69d930c4449d41951a1503"
+    ],
+    "content": "自然语言处理技术正在改变人机交互的方式。",
+    "content_summary": "自然语言处理技术正在改变人机交互的方式。",
+    "content_length": 20,
+    "created_at": "2025-07-30T04:28:46.561515+00:00",
+    "updated_at": "2025-07-30T04:29:05.710832+00:00",
+    "file_path": "unknown_source"
+  }
+}
