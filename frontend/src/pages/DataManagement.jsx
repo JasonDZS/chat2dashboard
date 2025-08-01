@@ -149,7 +149,7 @@ function DataManagement() {
       <div className="upload-sections-grid">
         <div className="upload-card">
           <h2>上传文档文件</h2>
-          <p>支持 PDF、Word、文本等文档格式</p>
+          <p>支持 PDF、Word、文本、表格、图片等文档格式</p>
           
           <div className="form-group">
             <label htmlFor="kb-id">知识库ID</label>
@@ -164,12 +164,12 @@ function DataManagement() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="document-file-input">选择文档 (.pdf, .docx, .doc, .txt, .md, .html)</label>
+            <label htmlFor="document-file-input">选择文档 (.pdf, .docx, .doc, .txt, .md, .html, .csv, .xlsx, .json, .jpg, .png)</label>
             <input
               id="document-file-input"
               type="file"
               multiple
-              accept=".pdf,.docx,.doc,.txt,.md,.markdown,.html"
+              accept=".pdf,.docx,.doc,.txt,.md,.markdown,.html,.csv,.xlsx,.json,.jpg,.jpeg,.png"
               onChange={handleDocumentFileChange}
               className="form-file-input"
             />

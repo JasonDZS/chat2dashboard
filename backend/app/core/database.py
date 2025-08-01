@@ -149,9 +149,10 @@ class DatabaseManager:
 
         """
         # 构建表结构信息文本
+        cols = ', '.join([f"{col['name']} ({col['type']})" for col in desc['columns']])
         schema_text = "\n\n".join([
             f"表名: {desc['table_name']}\n"
-            f"包含列: {', '.join([f'{col['name']} ({col['type']})' for col in desc['columns']])}"
+            f"包含列: {cols}"
             for desc in table_descriptions
         ])
 

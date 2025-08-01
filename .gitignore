@@ -40,3 +40,4 @@ databases/
 logs/
 !/backend/.env
 design.md
+.env

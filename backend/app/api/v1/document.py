@@ -55,7 +55,7 @@ async def upload_documents(
     logger.info(f"Received upload request for {len(files)} files to knowledge base {kb_id}")
     try:
         # 1. 验证文件类型和大小
-        supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html'}
+        supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html', '.csv', '.xlsx', '.json', '.jpg', '.jpeg', '.png'}
         max_file_size = 100 * 1024 * 1024  # 100MB
         uploaded_files = []
         
