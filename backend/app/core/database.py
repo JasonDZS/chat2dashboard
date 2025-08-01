@@ -66,9 +66,8 @@ class DatabaseManager:
     def generate_sql_statements(table_creation_sql: Dict[str, str],
                                  conn: sqlite3.Connection) -> List[Dict]:
         """
-        生成有价值的SQL语句集合，使用API生成自然语言问题
-        
-        返回格式: [{"question": "...", "sql": "...", "added_at": "..."}, ...]
+        使用AI同时生成自然语言问题和对应的SQL语句
+        确保问题表达自然且SQL准确
         """
         sql_entries = []
         current_time = datetime.datetime.now().isoformat()
@@ -92,184 +91,197 @@ class DatabaseManager:
                 "create_sql": create_sql
             })
 
-        # 使用API生成自然语言问题
-        ai_questions = DatabaseManager.generate_questions_with_ai(table_descriptions)
+        # 使用API同时生成问题和SQL
+        ai_questions_sql = DatabaseManager._generate_questions_and_sql_with_ai(table_descriptions)
 
-        for table_name, _ in table_creation_sql.items():
-            #基础查询 - 获取样本数据
-            sql = f"SELECT * FROM \"{table_name}\" LIMIT 10;"
-
-            # 使用AI生成的问题或默认问题
-            question = next((q for q in ai_questions if "样本" in q or "示例" in q or "查看" in q),
-                            f"查看{table_name.replace('_', ' ')}的前10条记录")
-
-            sql_entries.append({
-                "question": question,
-                "sql": sql,
-                "added_at": current_time
-            })
-
-            #基础查询 - 统计总行数
-            sql = f"SELECT COUNT(*) AS total_rows FROM \"{table_name}\";"
-
-            question = next((q for q in ai_questions if "总数" in q or "数量" in q or "总计" in q),
-                            f"统计{table_name.replace('_', ' ')}的总数量")
-
-            sql_entries.append({
-                "question": question,
-                "sql": sql,
-                "added_at": current_time
-            })
-
-            if conn:
-                try:
+        # 验证并存储生成的SQL
+        for entry in ai_questions_sql:
+            # 验证SQL是否可执行
+            try:
+                if conn:
                     cursor = conn.cursor()
-                    cursor.execute(f"PRAGMA table_info(\"{table_name}\")")
-                    columns = cursor.fetchall()
+                    # 使用EXPLAIN验证SQL语法
+                    cursor.execute(f"EXPLAIN QUERY PLAN {entry['sql']}")
+                    explain_result = cursor.fetchall()
 
-                    for col in columns:
-                        col_name = col[1]
-                        col_type = col[2].upper()
-
-                        #数值型分析 - 分组统计
-                        if "INT" in col_type or "REAL" in col_type:
-                            sql = (
-                                f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" "
-                                f"GROUP BY \"{col_name}\" ORDER BY count DESC;"
-                            )
-
-                            # 使用AI生成的问题或默认问题
-                            question = next(
-                                (q for q in ai_questions if col_name in q and ("分布" in q or "频率" in q)),
-                                f"按{col_name.replace('_', ' ')}分析{table_name.replace('_', ' ')}的分布情况"
-                            )
-
-                            sql_entries.append({
-                                "question": question,
-                                "sql": sql,
-                                "added_at": current_time
-                            })
-
-                            #数值型分析 - 基本统计量
-                            sql = (
-                                f"SELECT AVG(\"{col_name}\") AS avg_value, "
-                                f"MIN(\"{col_name}\") AS min_value, "
-                                f"MAX(\"{col_name}\") AS max_value, "
-                                f"SUM(\"{col_name}\") AS sum_value "
-                                f"FROM \"{table_name}\";"
-                            )
-
-                            question = next(
-                                (q for q in ai_questions if
-                                 col_name in q and ("平均" in q or "最大" in q or "最小" in q)),
-                                f"计算{table_name.replace('_', ' ')}中{col_name.replace('_', ' ')}的基本统计指标"
-                            )
-
-                            sql_entries.append({
-                                "question": question,
-                                "sql": sql,
-                                "added_at": current_time
-                            })
-
-                        #文本型分析 - TOP 10 值
-                        elif "TEXT" in col_type:
-                            sql = (
-                                f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" "
-                                f"GROUP BY \"{col_name}\" ORDER BY count DESC LIMIT 10;"
-                            )
-
-                            question = next(
-                                (q for q in ai_questions if
-                                 col_name in q and ("常见" in q or "热门" in q or "排行" in q)),
-                                f"找出{table_name.replace('_', ' ')}中{col_name.replace('_', ' ')}最常见的10个值"
-                            )
-
-                            sql_entries.append({
-                                "question": question,
-                                "sql": sql,
-                                "added_at": current_time
-                            })
-
-                            #文本型分析 - 长度分布
-                            sql = (
-                                f"SELECT LENGTH(\"{col_name}\") AS length, COUNT(*) AS count "
-                                f"FROM \"{table_name}\" GROUP BY length ORDER BY length;"
-                            )
-
-                            question = next(
-                                (q for q in ai_questions if col_name in q and ("长度" in q or "大小" in q)),
-                                f"分析{table_name.replace('_', ' ')}中{col_name.replace('_', ' ')}的文本长度分布"
-                            )
-
-                            sql_entries.append({
-                                "question": question,
-                                "sql": sql,
-                                "added_at": current_time
-                            })
-
-                except sqlite3.Error: # 如果获取列信息失败，继续下一张表
-                    continue
+                    # 如果EXPLAIN返回结果，说明SQL有效
+                    if explain_result:
+                        sql_entries.append({
+                            "question": entry["question"],
+                            "sql": entry["sql"],
+                            "added_at": current_time
+                        })
+                    else:
+                        # 如果验证失败，使用默认SQL
+                        print(f"SQL验证失败: {entry['sql']}")
+                        sql_entries.append({
+                            "question": entry["question"],
+                            "sql": DatabaseManager._generate_default_sql(entry["question"], table_descriptions),
+                            "added_at": current_time
+                        })
+                else:
+                    # 没有连接时
+                    sql_entries.append({
+                        "question": entry["question"],
+                        "sql": entry["sql"],
+                        "added_at": current_time
+                    })
+            except sqlite3.Error as e:
+                print(f"SQL执行错误: {str(e)}")
+                # 生成默认SQL
+                sql_entries.append({
+                    "question": entry["question"],
+                    "sql": DatabaseManager._generate_default_sql(entry["question"], table_descriptions),
+                    "added_at": current_time
+                })
 
         return sql_entries
 
     @staticmethod
-    def generate_questions_with_ai(table_descriptions: List[Dict],num_questions: int = 10) -> List[str]:
+    def _generate_questions_and_sql_with_ai(table_descriptions: List[Dict],num_questions: int = 50) -> List[Dict]:
         """
-        使用AI基于数据库schema生成问题
 
-        Args:
-            num_questions (int): 要生成的问题数量
+        使用API同时生成自然语言问题和对应的SQL语句
+        返回格式: [{"question": "...", "sql": "..."}, ...]
 
-        Returns:
-            List[str]: 生成的问题列表
         """
+        # 构建表结构信息文本
         schema_text = "\n\n".join([
             f"表名: {desc['table_name']}\n"
-            f"包含列: {', '.join([f'{col["name"]} ({col["type"]})' for col in desc['columns']])}"
+            f"包含列: {', '.join([f'{col['name']} ({col['type']})' for col in desc['columns']])}"
             for desc in table_descriptions
         ])
 
         prompt = f"""
-    基于以下数据库表结构，生成{num_questions}个具体的查询问题。这些问题应该：
-    1. 涵盖不同类型的查询（统计、分组、排序、时间范围等）
-    2. 具有实际业务意义
-    3. 可以通过SQL查询得到明确答案
-    4. 适合用图表展示结果
+    基于以下数据库表结构，生成{num_questions}个具体的自然语言查询问题及其对应的SQL查询语句。要求：
+    1. 自然语言问题使用流畅的中文表达，避免直接引用表名和列名
+    2. SQL语句使用SQLite语法，确保正确性
+    3. 问题应该具有实际业务意义
+    4. 问题可以通过SQL查询得到明确答案
+    5. 结果适合用图表展示
 
+    输出格式要求：
+    每个问题及其SQL占一行，格式为：
+    问题: [自然语言问题]
+    SQL: [对应的SQL语句]
 
     数据库表结构：
     {schema_text}
 
-    请只返回问题列表，每行一个问题，不要包含任何其他内容。
+    请严格按照上述格式输出，不要包含任何其他内容。
     """
 
         try:
+            # 使用OpenAI API生成问题和SQL
             from openai import OpenAI
             client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_API_BASE)
 
             response = client.chat.completions.create(
                 model=settings.LLM_MODEL,
                 messages=[
+                    {"role": "system", "content": "你是一个SQL专家，擅长将自然语言问题转换为准确的SQL查询语句。"},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,# Use slightly higher temperature for question generation
+                temperature=0.3,  # 确保准确性
                 max_tokens=1024
             )
 
-            # 解析返回的问题
-            questions_text = response.choices[0].message.content.strip()
-            questions = [q.strip() for q in questions_text.split('\n') if q.strip()]
+            # 解析返回的问题和SQL
+            content = response.choices[0].message.content.strip()
+            entries = []
+            current_question = None
+            current_sql = None
 
-            return questions
+            for line in content.split('\n'):
+                if line.startswith("问题:"):
+                    if current_question and current_sql:
+                        entries.append({"question": current_question, "sql": current_sql})
+                    current_question = line.replace("问题:", "").strip()
+                    current_sql = None
+                elif line.startswith("SQL:"):
+                    current_sql = line.replace("SQL:", "").strip()
+
+            # 添加最后一个条目
+            if current_question and current_sql:
+                entries.append({"question": current_question, "sql": current_sql})
+
+            return entries
 
         except Exception as e:
             print(f"AI问题生成失败: {str(e)}")
-            # 备选方案：基于表结构生成简单问题
-            return [
-                f"分析{desc['table_name'].replace('_', ' ')}的数据分布"
-                for desc in table_descriptions
-            ]
+            # 备选方案：基于表结构生成简单问题和SQL
+            return DatabaseManager._generate_fallback_questions_and_sql(table_descriptions)
 
+    @staticmethod
+    def _generate_fallback_questions_and_sql(table_descriptions: List[Dict]) -> List[Dict]:
+        """备选方案：生成简单问题和SQL"""
+        entries = []
+
+        for desc in table_descriptions:
+            table_name = desc["table_name"]
+            readable_table_name = table_name.replace('_', ' ')
+
+            # 样本数据查询
+            entries.append({
+                "question": f"查看{readable_table_name}的前10条记录",
+                "sql": f"SELECT * FROM \"{table_name}\" LIMIT 10;"
+            })
+
+            # 行数统计
+            entries.append({
+                "question": f"统计{readable_table_name}的总数量",
+                "sql": f"SELECT COUNT(*) AS total_count FROM \"{table_name}\";"
+            })
+
+            # 为每个列生成分析问题
+            for col in desc["columns"]:
+                col_name = col["name"]
+                readable_col_name = col_name.replace('_', ' ')
+                col_type = col["type"]
+
+                if "INT" in col_type or "REAL" in col_type:
+                    # 数值分析
+                    entries.append({
+                        "question": f"分析{readable_table_name}中{readable_col_name}的分布情况",
+                        "sql": f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" GROUP BY \"{col_name}\" ORDER BY count DESC;"
+                    })
+
+                    entries.append({
+                        "question": f"计算{readable_table_name}中{readable_col_name}的平均值",
+                        "sql": f"SELECT AVG(\"{col_name}\") AS average_value FROM \"{table_name}\";"
+                    })
+
+                elif "TEXT" in col_type:
+                    # 文本分析
+                    entries.append({
+                        "question": f"找出{readable_table_name}中最常见的{readable_col_name}",
+                        "sql": f"SELECT \"{col_name}\", COUNT(*) AS count FROM \"{table_name}\" GROUP BY \"{col_name}\" ORDER BY count DESC LIMIT 10;"
+                    })
+
+                elif "DATE" in col_type or "TIME" in col_type:
+                    # 时间分析
+                    entries.append({
+                        "question": f"分析{readable_table_name}中{readable_col_name}的月度趋势",
+                        "sql": f"SELECT strftime('%Y-%m', \"{col_name}\") AS month, COUNT(*) AS count FROM \"{table_name}\" GROUP BY month ORDER BY month;"
+                    })
+
+        return entries
+
+    @staticmethod
+    def _generate_default_sql(question: str, table_descriptions: List[Dict]) -> str:
+        """根据问题生成默认SQL"""
+        # 目前简单返回一个基础查询
+
+        for desc in table_descriptions:
+            if desc["table_name"] in question:
+                return f"SELECT * FROM \"{desc['table_name']}\" LIMIT 10;"
+
+        # 默认返回第一个表的查询
+        if table_descriptions:
+            return f"SELECT * FROM \"{table_descriptions[0]['table_name']}\" LIMIT 10;"
+
+        return "SELECT 1;"
+        
     @staticmethod
     def generate_documents(db_name: str, tables: List[TableInfo]) -> List[Dict]:
         """生成数据库文档"""
