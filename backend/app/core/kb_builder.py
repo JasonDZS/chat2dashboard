@@ -1,30 +1,14 @@
 """
 知识库构建器模块
-使用LightRAG构建向量数据库和知识图谱
+简化版本，主要用于构建状态管理和兼容性
 """
-import os
 import json
-import asyncio
-from typing import List, Dict, Any, Optional, AsyncGenerator
+from typing import Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
-import uuid
 
-try:
-    from lightrag import LightRAG, QueryParam
-    from lightrag.llm.openai import gpt_4o_mini_complete, gpt_4o_complete, openai_embed, openai_complete_if_cache
-    from lightrag.kg.shared_storage import initialize_pipeline_status
-    from lightrag.utils import setup_logger, EmbeddingFunc
-    import functools
-    LIGHTRAG_AVAILABLE = True
-except ImportError:
-    LIGHTRAG_AVAILABLE = False
-
-from .dbagent.document_processor import DocumentProcessorFactory, ProcessedDocument
 from .exceptions import (
     KnowledgeBaseNotFoundError,
-    BuildInProgressError,
-    DocumentNotFoundError
 )
 from ..config import settings
 from .logging import get_logger
@@ -32,81 +16,17 @@ from .logging import get_logger
 logger = get_logger(__name__)
 
 
-def _create_model_functions():
-    """
-    根据配置创建模型函数
-    
-    Returns:
-        tuple: llm_model_func
-    """
-    if not LIGHTRAG_AVAILABLE:
-        return None, None
-    
-    # 根据配置选择模型函数
-    if settings.LLM_PROVIDER == "openai" or settings.OPENAI_API_BASE:
-        # 创建自定义LLM函数
-        async def custom_llm_complete(
-            prompt: str,
-            system_prompt: str = None,
-            history_messages: list = None,
-            **kwargs
-        ):
-            return await openai_complete_if_cache(
-                prompt=prompt,
-                system_prompt=system_prompt,
-                history_messages=history_messages or [],
-                model=settings.LLM_MODEL,
-                temperature=settings.LLM_TEMPERATURE,
-                max_tokens=settings.LLM_MAX_TOKENS,
-                base_url=settings.OPENAI_API_BASE,
-                api_key=settings.OPENAI_API_KEY,
-                **kwargs
-            )
-        
-        # 创建自定义嵌入函数，保持原有openai_embed的属性
-        async def custom_embed(texts: list):
-            return await openai_embed(
-                texts,
-                model=settings.EMBEDDING_MODEL,
-                base_url=settings.OPENAI_API_BASE,
-                api_key=settings.OPENAI_API_KEY
-            )
-
-        llm_model_func = custom_llm_complete
-        embedding_func = custom_embed
-        
-    else:
-        # 默认使用原有的GPT函数作为后备
-        logger.warning(f"Using default OpenAI functions for unsupported provider: {settings.LLM_PROVIDER}")
-        llm_model_func = gpt_4o_mini_complete
-        embedding_func = openai_embed
-    
-    return llm_model_func, embedding_func
-
-# 设置LightRAG日志
-if LIGHTRAG_AVAILABLE:
-    setup_logger("lightrag", level="INFO")
-
-
 class KnowledgeBaseBuilder:
-    """知识库构建器"""
+    """知识库构建器 - 简化版本"""
     
     def __init__(self, kb_id: str):
         self.kb_id = kb_id
         self.kb_dir = Path(settings.DATABASES_DIR) / kb_id
-        self.docs_dir = self.kb_dir / "docs"
         self.rag_storage_dir = self.kb_dir / "rag_storage"
-        self.rag_instance: Optional[Any] = None
-        self.factory = DocumentProcessorFactory()
-        
-        # 创建必要的目录
-        self.kb_dir.mkdir(parents=True, exist_ok=True)
-        self.docs_dir.mkdir(exist_ok=True)
-        self.rag_storage_dir.mkdir(exist_ok=True)
         
         # 构建状态
         self.build_status = {
-            "status": "initializing",  # initializing, building, ready, error
+            "status": "initializing",
             "progress": 0.0,
             "entities_count": 0,
             "relations_count": 0,
@@ -116,211 +36,8 @@ class KnowledgeBaseBuilder:
             "error_message": None
         }
     
-    async def initialize_rag(self):
-        """
-        初始化LightRAG实例
-        
-        Returns:
-            LightRAG实例或None
-        """
-        if not LIGHTRAG_AVAILABLE:
-            raise ImportError("LightRAG is not installed. Please install it first.")
-        
-        try:
-            rag = LightRAG(
-                working_dir=str(self.rag_storage_dir),
-                llm_model_func=lambda prompt, system_prompt=None, history_messages=[], **kwargs: openai_complete_if_cache(
-                    settings.LLM_MODEL,
-                    prompt,
-                    system_prompt=system_prompt,
-                    history_messages=history_messages,
-                    base_url=settings.OPENAI_API_BASE,
-                    api_key=settings.OPENAI_API_KEY,
-                    **kwargs,
-                ),
-                embedding_func=EmbeddingFunc(
-                    embedding_dim = settings.EMBEDDING_DIM,
-                    max_token_size = settings.EMBEDDING_MAX_TOKEN_SIZE,
-                    func = lambda texts: openai_embed(
-                        texts,
-                        model = settings.EMBEDDING_MODEL,
-                        api_key = settings.OPENAI_API_KEY,
-                        base_url = settings.OPENAI_API_BASE
-                    )  # 使用自定义嵌入函数
-                ),
-            )
-            
-            # 重要：两个初始化调用都是必需的！
-            await rag.initialize_storages()  # 初始化存储后端
-            await initialize_pipeline_status()  # 初始化处理管道
-            
-            logger.info(f"LightRAG initialized for knowledge base {self.kb_id}")
-            return rag
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize LightRAG: {str(e)}")
-            raise
     
-    async def build_knowledge_base(self, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        构建知识库
-        
-        Args:
-            config: 构建配置
-            
-        Returns:
-            Dict[str, Any]: 构建结果
-        """
-        logger.info(f"Starting knowledge base build for {self.kb_id}")
-        
-        try:
-            # 更新状态
-            self.build_status.update({
-                "status": "building",
-                "progress": 0.0,
-                "last_updated": datetime.now().isoformat()
-            })
-            await self._save_build_status()
-            
-            # 初始化RAG
-            self.rag_instance = await self.initialize_rag()
-            
-            # 获取文档列表
-            documents = await self._get_documents_to_process()
-            total_docs = len(documents)
-            
-            if total_docs == 0:
-                logger.warning(f"No documents found for knowledge base {self.kb_id}")
-                self.build_status.update({
-                    "status": "ready",
-                    "progress": 100.0,
-                    "documents_count": 0,
-                    "last_updated": datetime.now().isoformat()
-                })
-                await self._save_build_status()
-                return self.build_status
-            
-            logger.info(f"Found {total_docs} documents to process")
-            
-            # 处理文档并构建知识库
-            processed_count = 0
-            start_time = datetime.now()
-            
-            for i, doc_path in enumerate(documents):
-                try:
-                    # 处理单个文档
-                    await self._process_single_document(doc_path)
-                    processed_count += 1
-                    
-                    # 更新进度
-                    progress = (processed_count / total_docs) * 100
-                    self.build_status.update({
-                        "progress": progress,
-                        "documents_count": processed_count,
-                        "last_updated": datetime.now().isoformat()
-                    })
-                    await self._save_build_status()
-                    
-                    logger.info(f"Processed document {i+1}/{total_docs}: {doc_path.name}")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to process document {doc_path}: {str(e)}")
-                    continue
-            
-            # 获取最终统计信息
-            build_time = (datetime.now() - start_time).total_seconds()
-            stats = await self._get_kb_statistics()
-            
-            # 更新最终状态
-            self.build_status.update({
-                "status": "ready",
-                "progress": 100.0,
-                "entities_count": stats.get("entities_count", 0),
-                "relations_count": stats.get("relations_count", 0),
-                "documents_count": processed_count,
-                "build_time": build_time,
-                "last_updated": datetime.now().isoformat(),
-                "error_message": None
-            })
-            await self._save_build_status()
-            
-            logger.info(f"Knowledge base build completed for {self.kb_id}")
-            return self.build_status
-            
-        except Exception as e:
-            logger.error(f"Knowledge base build failed: {str(e)}")
-            self.build_status.update({
-                "status": "error",
-                "error_message": str(e),
-                "last_updated": datetime.now().isoformat()
-            })
-            await self._save_build_status()
-            raise
-        finally:
-            if self.rag_instance:
-                await self.rag_instance.finalize_storages()
-    
-    async def _get_documents_to_process(self) -> List[Path]:
-        """
-        获取需要处理的文档列表
-        
-        Returns:
-            List[Path]: 文档路径列表
-        """
-        supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html'}
-        documents = []
-        
-        if self.docs_dir.exists():
-            for file_path in self.docs_dir.iterdir():
-                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                    documents.append(file_path)
-        
-        return sorted(documents)
-    
-    async def _process_single_document(self, doc_path: Path):
-        """
-        处理单个文档并添加到知识库
-        
-        Args:
-            doc_path: 文档路径
-        """
-        try:
-            # 使用文档处理器提取内容
-            processor = self.factory.get_processor(str(doc_path))
-            if not processor:
-                logger.warning(f"No processor available for {doc_path}")
-                return
-            
-            processed_doc = processor.process(str(doc_path))
-            
-            # 准备文档内容
-            content = processed_doc.content
-            if not content.strip():
-                logger.warning(f"Document {doc_path.name} has no content")
-                return
-            
-            # 添加元数据信息到内容
-            metadata_text = f"""
-文档标题: {processed_doc.metadata.title or doc_path.stem}
-文件名: {processed_doc.metadata.file_name}
-文档类型: {processed_doc.metadata.doc_type.value}
-字数: {processed_doc.metadata.word_count}
-创建时间: {processed_doc.metadata.created_time}
-
-文档内容:
-{content}
-"""
-            
-            # 插入到LightRAG
-            await self.rag_instance.ainsert(metadata_text)
-            
-            logger.debug(f"Inserted document {doc_path.name} into knowledge base")
-            
-        except Exception as e:
-            logger.error(f"Failed to process document {doc_path}: {str(e)}")
-            raise
-    
-    async def _get_kb_statistics(self) -> Dict[str, Any]:
+    def _get_kb_statistics(self) -> Dict[str, Any]:
         """
         获取知识库统计信息
         从lightrag保存的graph_chunk_entity_relation.graphml文件中读取
@@ -332,47 +49,13 @@ class KnowledgeBaseBuilder:
             graphml_file = self.rag_storage_dir / "graph_chunk_entity_relation.graphml"
             
             if not graphml_file.exists():
-                logger.warning(f"GraphML file not found: {graphml_file}")
                 return {"entities_count": 0, "relations_count": 0}
             
-            # 读取GraphML文件并解析
-            entities_count = 0
-            relations_count = 0
-            
-            try:
-                # 使用xml.etree.ElementTree解析GraphML文件
-                import xml.etree.ElementTree as ET
-                
-                tree = ET.parse(str(graphml_file))
-                root = tree.getroot()
-                
-                # GraphML命名空间
-                ns = {'graphml': 'http://graphml.graphdrawing.org/xmlns'}
-                
-                # 查找图元素
-                graph = root.find('.//graphml:graph', ns)
-                if graph is not None:
-                    # 统计节点数量（实体）
-                    nodes = graph.findall('graphml:node', ns)
-                    entities_count = len(nodes)
-                    
-                    # 统计边数量（关系）
-                    edges = graph.findall('graphml:edge', ns)
-                    relations_count = len(edges)
-                    
-                    logger.info(f"GraphML statistics - Entities: {entities_count}, Relations: {relations_count}")
-                else:
-                    logger.warning("No graph element found in GraphML file")
-                    
-            except ET.ParseError as e:
-                logger.error(f"Failed to parse GraphML file: {str(e)}")
-                # 尝试简单的文本解析作为备选方案
-                with open(graphml_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    # 简单计数节点和边标签
-                    entities_count = content.count('<node ')
-                    relations_count = content.count('<edge ')
-                    logger.info(f"Fallback text parsing - Entities: {entities_count}, Relations: {relations_count}")
+            # 简单的文本解析
+            with open(graphml_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                entities_count = content.count('<node ')
+                relations_count = content.count('<edge ')
             
             return {
                 "entities_count": entities_count,
@@ -383,7 +66,7 @@ class KnowledgeBaseBuilder:
             logger.error(f"Failed to get KB statistics: {str(e)}")
             return {"entities_count": 0, "relations_count": 0}
     
-    async def _save_build_status(self):
+    def _save_build_status(self):
         """保存构建状态到文件"""
         status_file = self.kb_dir / "build_status.json"
         try:
@@ -392,7 +75,7 @@ class KnowledgeBaseBuilder:
         except Exception as e:
             logger.error(f"Failed to save build status: {str(e)}")
     
-    async def get_build_status(self) -> Dict[str, Any]:
+    def get_build_status(self) -> Dict[str, Any]:
         """
         获取构建状态
         
@@ -403,15 +86,25 @@ class KnowledgeBaseBuilder:
         if status_file.exists():
             try:
                 with open(status_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    status = json.load(f)
+                    # 检查GraphML文件是否存在来确定状态
+                    graphml_file = self.rag_storage_dir / "graph_chunk_entity_relation.graphml"
+                    if graphml_file.exists() and status.get("status") != "error":
+                        stats = self._get_kb_statistics()
+                        status.update({
+                            "status": "ready",
+                            "entities_count": stats.get("entities_count", 0),
+                            "relations_count": stats.get("relations_count", 0)
+                        })
+                    return status
             except Exception as e:
                 logger.error(f"Failed to load build status: {str(e)}")
         
         return self.build_status
     
-    async def update_knowledge_base(self, new_documents: List[str]) -> Dict[str, Any]:
+    def update_knowledge_base(self, new_documents) -> Dict[str, Any]:
         """
-        增量更新知识库
+        增量更新知识库 - 已废弃，使用LightRAGGraphBuilder代替
         
         Args:
             new_documents: 新文档路径列表
@@ -419,103 +112,11 @@ class KnowledgeBaseBuilder:
         Returns:
             Dict[str, Any]: 更新结果
         """
-        logger.info(f"Starting incremental update for knowledge base {self.kb_id}")
-        
-        try:
-            # 初始化RAG
-            self.rag_instance = await self.initialize_rag()
-            
-            # 处理新文档
-            processed_count = 0
-            start_time = datetime.now()
-            
-            for doc_path_str in new_documents:
-                doc_path = Path(doc_path_str)
-                if doc_path.exists():
-                    await self._process_single_document(doc_path)
-                    processed_count += 1
-            
-            # 更新统计信息
-            update_time = (datetime.now() - start_time).total_seconds()
-            stats = await self._get_kb_statistics()
-            
-            # 更新构建状态
-            current_status = await self.get_build_status()
-            current_status.update({
-                "documents_count": current_status.get("documents_count", 0) + processed_count,
-                "entities_count": stats.get("entities_count", 0),
-                "relations_count": stats.get("relations_count", 0),
-                "last_updated": datetime.now().isoformat()
-            })
-            
-            self.build_status = current_status
-            await self._save_build_status()
-            
-            logger.info(f"Incremental update completed, processed {processed_count} documents")
-            
-            return {
-                "status": "completed",
-                "processed_documents": processed_count,
-                "update_time": update_time,
-                "total_documents": current_status["documents_count"]
-            }
-            
-        except Exception as e:
-            logger.error(f"Incremental update failed: {str(e)}")
-            raise
-        finally:
-            if self.rag_instance:
-                await self.rag_instance.finalize_storages()
+        logger.warning("update_knowledge_base is deprecated. Use LightRAGGraphBuilder instead.")
+        return {"status": "deprecated", "message": "Use LightRAGGraphBuilder instead"}
     
-    async def search_knowledge_base(
-        self, 
-        query: str, 
-        search_type: str = "hybrid",
-        top_k: int = 10
-    ) -> Dict[str, Any]:
-        """
-        搜索知识库
-        
-        Args:
-            query: 查询字符串
-            search_type: 搜索类型 (hybrid, vector, graph)
-            top_k: 返回结果数量
-            
-        Returns:
-            Dict[str, Any]: 搜索结果
-        """
-        if not LIGHTRAG_AVAILABLE:
-            raise ImportError("LightRAG is not installed")
-        
-        try:
-            # 初始化RAG实例
-            self.rag_instance = await self.initialize_rag()
-            
-            # 设置查询参数
-            param = QueryParam(mode=search_type)
-            
-            # 执行查询
-            start_time = datetime.now()
-            result = await self.rag_instance.aquery(query, param=param)
-            search_time = (datetime.now() - start_time).total_seconds()
-            
-            # 格式化结果
-            return {
-                "query": query,
-                "result": result,
-                "search_type": search_type,
-                "search_time": search_time,
-                "kb_id": self.kb_id
-            }
-            
-        except Exception as e:
-            logger.error(f"Knowledge base search failed: {str(e)}")
-            raise
-        finally:
-            if self.rag_instance:
-                await self.rag_instance.finalize_storages()
     
-    async def validate_knowledge_base(self) -> Dict[str, Any]:
+    def validate_knowledge_base(self) -> Dict[str, Any]:
         """
         验证知识库完整性
         
@@ -527,25 +128,25 @@ class KnowledgeBaseBuilder:
                 "kb_id": self.kb_id,
                 "valid": True,
                 "validation_time": datetime.now().isoformat(),
-                "checks": {},
-                "performance_metrics": {}
+                "checks": {}
             }
             
-            # 检查目录结构
-            if not self.rag_storage_dir.exists():
+            # 检查GraphML文件是否存在
+            graphml_file = self.rag_storage_dir / "graph_chunk_entity_relation.graphml"
+            if not graphml_file.exists():
                 validation_result["valid"] = False
-                validation_result["checks"]["storage_directory"] = {
+                validation_result["checks"]["graph_file"] = {
                     "status": "missing",
-                    "message": "RAG storage directory not found"
+                    "message": "Knowledge graph file not found"
                 }
             else:
-                validation_result["checks"]["storage_directory"] = {
+                validation_result["checks"]["graph_file"] = {
                     "status": "valid",
-                    "path": str(self.rag_storage_dir)
+                    "path": str(graphml_file)
                 }
             
             # 检查构建状态
-            build_status = await self.get_build_status()
+            build_status = self.get_build_status()
             if build_status.get("status") == "ready":
                 validation_result["checks"]["build_status"] = {
                     "status": "valid",
@@ -556,21 +157,6 @@ class KnowledgeBaseBuilder:
                 validation_result["checks"]["build_status"] = {
                     "status": "invalid",
                     "current_status": build_status.get("status", "unknown")
-                }
-            
-            # 性能指标
-            if self.rag_storage_dir.exists():
-                storage_size = sum(
-                    f.stat().st_size 
-                    for f in self.rag_storage_dir.rglob('*') 
-                    if f.is_file()
-                ) / (1024 * 1024)  # MB
-                
-                validation_result["performance_metrics"] = {
-                    "storage_size_mb": round(storage_size, 2),
-                    "documents_count": build_status.get("documents_count", 0),
-                    "entities_count": build_status.get("entities_count", 0),
-                    "relations_count": build_status.get("relations_count", 0)
                 }
             
             return validation_result
@@ -584,7 +170,7 @@ class KnowledgeBaseBuilder:
                 "error": str(e)
             }
     
-    async def delete_knowledge_base(self) -> Dict[str, Any]:
+    def delete_knowledge_base(self) -> Dict[str, Any]:
         """
         删除知识库
         
@@ -614,11 +200,10 @@ class KnowledgeBaseBuilder:
 
 
 class KnowledgeBaseManager:
-    """知识库管理器"""
+    """知识库管理器 - 简化版本"""
     
     def __init__(self):
         self.builders: Dict[str, KnowledgeBaseBuilder] = {}
-        self.build_tasks: Dict[str, asyncio.Task] = {}
     
     def get_builder(self, kb_id: str) -> KnowledgeBaseBuilder:
         """
@@ -634,53 +219,17 @@ class KnowledgeBaseManager:
             self.builders[kb_id] = KnowledgeBaseBuilder(kb_id)
         return self.builders[kb_id]
     
-    async def start_build_task(self, kb_id: str, config: Optional[Dict[str, Any]] = None) -> str:
+    def start_update_task(self, kb_id: str, new_documents) -> str:
         """
-        启动构建任务
+        启动更新任务 - 已废弃
         
-        Args:
-            kb_id: 知识库ID
-            config: 构建配置
-            
         Returns:
             str: 任务ID
         """
-        if kb_id in self.build_tasks and not self.build_tasks[kb_id].done():
-            raise BuildInProgressError(f"Knowledge base {kb_id} is already being built")
-        
-        builder = self.get_builder(kb_id)
-        task = asyncio.create_task(builder.build_knowledge_base(config))
-        self.build_tasks[kb_id] = task
-        
-        task_id = str(uuid.uuid4())
-        logger.info(f"Started build task {task_id} for knowledge base {kb_id}")
-        
-        return task_id
+        logger.warning("start_update_task is deprecated. Use LightRAGGraphBuilder instead.")
+        return "deprecated"
     
-    async def start_update_task(self, kb_id: str, new_documents: List[str]) -> str:
-        """
-        启动更新任务
-        
-        Args:
-            kb_id: 知识库ID
-            new_documents: 新文档列表
-            
-        Returns:
-            str: 任务ID
-        """
-        if kb_id in self.build_tasks and not self.build_tasks[kb_id].done():
-            raise BuildInProgressError(f"Knowledge base {kb_id} is busy")
-        
-        builder = self.get_builder(kb_id)
-        task = asyncio.create_task(builder.update_knowledge_base(new_documents))
-        self.build_tasks[kb_id] = task
-        
-        task_id = str(uuid.uuid4())
-        logger.info(f"Started update task {task_id} for knowledge base {kb_id}")
-        
-        return task_id
-    
-    async def get_build_status(self, kb_id: str) -> Dict[str, Any]:
+    def get_build_status(self, kb_id: str) -> Dict[str, Any]:
         """
         获取构建状态
         
@@ -691,31 +240,9 @@ class KnowledgeBaseManager:
             Dict[str, Any]: 构建状态
         """
         builder = self.get_builder(kb_id)
-        return await builder.get_build_status()
+        return builder.get_build_status()
     
-    async def search_knowledge_base(
-        self, 
-        kb_id: str, 
-        query: str, 
-        search_type: str = "hybrid",
-        top_k: int = 10
-    ) -> Dict[str, Any]:
-        """
-        搜索知识库
-        
-        Args:
-            kb_id: 知识库ID
-            query: 查询字符串
-            search_type: 搜索类型
-            top_k: 返回结果数量
-            
-        Returns:
-            Dict[str, Any]: 搜索结果
-        """
-        builder = self.get_builder(kb_id)
-        return await builder.search_knowledge_base(query, search_type, top_k)
-    
-    async def validate_knowledge_base(self, kb_id: str) -> Dict[str, Any]:
+    def validate_knowledge_base(self, kb_id: str) -> Dict[str, Any]:
         """
         验证知识库
         
@@ -726,9 +253,9 @@ class KnowledgeBaseManager:
             Dict[str, Any]: 验证结果
         """
         builder = self.get_builder(kb_id)
-        return await builder.validate_knowledge_base()
+        return builder.validate_knowledge_base()
     
-    async def delete_knowledge_base(self, kb_id: str) -> Dict[str, Any]:
+    def delete_knowledge_base(self, kb_id: str) -> Dict[str, Any]:
         """
         删除知识库
         
@@ -738,13 +265,8 @@ class KnowledgeBaseManager:
         Returns:
             Dict[str, Any]: 删除结果
         """
-        # 停止正在进行的任务
-        if kb_id in self.build_tasks and not self.build_tasks[kb_id].done():
-            self.build_tasks[kb_id].cancel()
-            del self.build_tasks[kb_id]
-        
         builder = self.get_builder(kb_id)
-        result = await builder.delete_knowledge_base()
+        result = builder.delete_knowledge_base()
         
         # 清理管理器中的引用
         if kb_id in self.builders:

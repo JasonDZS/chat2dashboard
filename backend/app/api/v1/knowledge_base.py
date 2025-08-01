@@ -31,6 +31,7 @@ from ...core.exceptions import (
 from ...core.kb_builder import kb_manager
 from ...config import settings
 from ...core.logging import get_logger
+from ...core.graph.src.builders.lightrag_builder import LightRAGGraphBuilder
 
 logger = get_logger(__name__)
 
@@ -77,6 +78,22 @@ async def create_knowledge_base(request: KnowledgeBaseCreateRequest):
             import json
             json.dump(kb_config, f, ensure_ascii=False, indent=2)
         
+        # 保存初始构建状态
+        build_status = {
+            "status": "initializing",
+            "progress": 0.0,
+            "entities_count": 0,
+            "relations_count": 0,
+            "documents_count": 0,
+            "build_time": 0.0,
+            "last_updated": datetime.now().isoformat(),
+            "error_message": None
+        }
+        
+        build_status_file = f"{kb_dir}/build_status.json"
+        with open(build_status_file, 'w', encoding='utf-8') as f:
+            json.dump(build_status, f, ensure_ascii=False, indent=2)
+        
         logger.info(f"Created knowledge base {kb_id} with name '{request.name}'")
         
         return KnowledgeBaseResponse(
@@ -118,9 +135,46 @@ async def build_knowledge_base(
         if not kb_dir.exists():
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        # 启动构建任务
-        config_dict = config.model_dump() if config else None
-        task_id = await kb_manager.start_build_task(kb_id, config_dict)
+        # 使用LightRAGGraphBuilder构建知识图谱
+        def build_task():
+            async def async_build():
+                try:
+                    # 创建LightRAG构建器
+                    rag_storage_dir = kb_dir / "rag_storage"
+                    builder = LightRAGGraphBuilder(str(rag_storage_dir))
+                    
+                    # 获取文档列表
+                    docs_dir = kb_dir / "docs"
+                    documents = []
+                    if docs_dir.exists():
+                        supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html'}
+                        for file_path in docs_dir.iterdir():
+                            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    documents.append(f.read())
+                    
+                    # 构建知识图谱
+                    if documents:
+                        graph = await builder.build_graph(texts=documents, graph_name=f"kb_{kb_id}")
+                        logger.info(f"Built graph for {kb_id}: {len(graph.entities)} entities, {len(graph.relations)} relations")
+                    
+                    await builder.cleanup()
+                    
+                except Exception as e:
+                    logger.error(f"Error in build task for {kb_id}: {e}")
+                    raise
+                    
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(async_build())
+            finally:
+                loop.close()
+        
+        # 启动后台任务
+        background_tasks.add_task(build_task)
+        task_id = str(uuid.uuid4())
         
         logger.info(f"Started build task {task_id} for knowledge base {kb_id}")
         
@@ -160,7 +214,7 @@ async def get_build_status(kb_id: str):
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
         # 获取构建状态
-        build_status = await kb_manager.get_build_status(kb_id)
+        build_status = kb_manager.get_build_status(kb_id)
         
         return JSONResponse(content={
             "kb_id": kb_id,
@@ -214,7 +268,7 @@ async def update_knowledge_base(
                     new_documents.append(str(file_path))
         
         # 启动更新任务
-        task_id = await kb_manager.start_update_task(kb_id, new_documents)
+        task_id = kb_manager.start_update_task(kb_id, new_documents)
         
         logger.info(f"Started update task {task_id} for knowledge base {kb_id}")
         
@@ -254,45 +308,48 @@ async def search_knowledge_base(kb_id: str, request: KnowledgeBaseSearchRequest)
         if not kb_dir.exists():
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        # 检查知识库是否已构建
-        build_status = await kb_manager.get_build_status(kb_id)
-        if build_status.get("status") != "ready":
+        # 检查GraphML文件是否存在
+        rag_storage_dir = kb_dir / "rag_storage"
+        graphml_file = rag_storage_dir / "graph_chunk_entity_relation.graphml"
+        if not graphml_file.exists():
             raise HTTPException(
                 status_code=400, 
-                detail=f"Knowledge base is not ready. Current status: {build_status.get('status')}"
+                detail="Knowledge base is not ready. Please build the knowledge base first."
             )
         
-        # 执行搜索
-        search_result = await kb_manager.search_knowledge_base(
-            kb_id=kb_id,
-            query=request.query,
-            search_type=request.search_type,
-            top_k=request.top_k
-        )
-        
-        # 格式化搜索结果
-        results = []
-        if search_result.get("result"):
-            results.append({
-                "id": str(uuid.uuid4()),
-                "content": search_result["result"],
-                "title": f"搜索结果: {request.query}",
-                "source": "lightrag",
-                "score": 1.0,
-                "metadata": {"search_type": request.search_type},
-                "snippet": search_result["result"][:200] + "..." if len(search_result["result"]) > 200 else search_result["result"],
-                "highlight": [request.query],
-                "confidence": 0.95
-            })
-        
-        return KnowledgeBaseSearchResponse(
-            query=request.query,
-            results=results,
-            total_count=len(results),
-            search_time=search_result.get("search_time", 0.0),
-            kb_id=kb_id,
-            search_type=request.search_type
-        )
+        # 使用LightRAGGraphBuilder执行搜索
+        builder = LightRAGGraphBuilder(str(rag_storage_dir))
+        try:
+            search_result = await builder.search_graph(
+                query=request.query,
+                search_type=request.search_type
+            )
+            
+            # 格式化搜索结果
+            results = []
+            if search_result.get("result"):
+                results.append({
+                    "id": str(uuid.uuid4()),
+                    "content": search_result["result"],
+                    "title": f"搜索结果: {request.query}",
+                    "source": "lightrag",
+                    "score": 1.0,
+                    "metadata": {"search_type": request.search_type},
+                    "snippet": search_result["result"][:200] + "..." if len(search_result["result"]) > 200 else search_result["result"],
+                    "highlight": [request.query],
+                    "confidence": 0.95
+                })
+            
+            return KnowledgeBaseSearchResponse(
+                query=request.query,
+                results=results,
+                total_count=len(results),
+                search_time=0.0,
+                kb_id=kb_id,
+                search_type=request.search_type
+            )
+        finally:
+            await builder.cleanup()
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -337,7 +394,7 @@ async def get_knowledge_base(kb_id: str):
             }
         
         # 获取构建状态
-        build_status = await kb_manager.get_build_status(kb_id)
+        build_status = kb_manager.get_build_status(kb_id)
         
         return KnowledgeBaseResponse(
             id=kb_id,
@@ -402,7 +459,7 @@ async def list_knowledge_bases(
                         kb_config = json.load(f)
                     
                     # 获取构建状态
-                    build_status = await kb_manager.get_build_status(kb_dir.name)
+                    build_status = kb_manager.get_build_status(kb_dir.name)
                     
                     # 应用状态过滤
                     if status and build_status.get("status") != status:
@@ -458,7 +515,7 @@ async def delete_knowledge_base(kb_id: str):
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
         # 删除知识库
-        result = await kb_manager.delete_knowledge_base(kb_id)
+        result = kb_manager.delete_knowledge_base(kb_id)
         
         logger.info(f"Knowledge base {kb_id} deleted successfully")
         return JSONResponse(content=result)
@@ -488,7 +545,7 @@ async def validate_knowledge_base(kb_id: str):
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
         # 执行验证
-        validation_result = await kb_manager.validate_knowledge_base(kb_id)
+        validation_result = kb_manager.validate_knowledge_base(kb_id)
         
         return JSONResponse(content=validation_result)
         
@@ -617,37 +674,40 @@ async def get_knowledge_graph(kb_id: str):
         if not kb_dir.exists():
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
-        # 检查知识库是否已构建
-        build_status = await kb_manager.get_build_status(kb_id)
-        if build_status.get("status") != "ready":
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Knowledge base is not ready. Current status: {build_status.get('status')}"
-            )
-        
         # 查找GraphML文件
-        graphml_file = kb_dir / "rag_storage" / "graph_chunk_entity_relation.graphml"
+        rag_storage_dir = kb_dir / "rag_storage"
+        graphml_file = rag_storage_dir / "graph_chunk_entity_relation.graphml"
         if not graphml_file.exists():
             raise HTTPException(
                 status_code=404, 
                 detail="Knowledge graph file not found. Please rebuild the knowledge base."
             )
         
-        # 解析GraphML文件并转换为知识图谱JSON格式
-        kg_data = _parse_graphml_to_kg_json(str(graphml_file))
-        
-        logger.info(f"Successfully retrieved knowledge graph for {kb_id}: {len(kg_data['nodes'])} nodes, {len(kg_data['links'])} links")
-        
-        return JSONResponse(content={
-            "kb_id": kb_id,
-            "graph_data": kg_data,
-            "metadata": {
-                "nodes_count": len(kg_data['nodes']),
-                "links_count": len(kg_data['links']),
-                "categories_count": len(kg_data['categories']),
-                "generated_at": datetime.now().isoformat()
-            }
-        })
+        # 使用LightRAGGraphBuilder获取图谱统计信息
+        builder = LightRAGGraphBuilder(str(rag_storage_dir))
+        try:
+            stats = await builder.get_graph_statistics()
+            
+            # 解析GraphML文件并转换为知识图谱JSON格式
+            kg_data = _parse_graphml_to_kg_json(str(graphml_file))
+            
+            logger.info(f"Successfully retrieved knowledge graph for {kb_id}: {len(kg_data['nodes'])} nodes, {len(kg_data['links'])} links")
+            
+            return JSONResponse(content={
+                "kb_id": kb_id,
+                "graph_data": kg_data,
+                "metadata": {
+                    "nodes_count": len(kg_data['nodes']),
+                    "links_count": len(kg_data['links']),
+                    "categories_count": len(kg_data['categories']),
+                    "entities_count": stats.get("entities_count", 0),
+                    "relations_count": stats.get("relations_count", 0),
+                    "generated_at": datetime.now().isoformat(),
+                    "status": stats.get("status", "ready")
+                }
+            })
+        finally:
+            await builder.cleanup()
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
