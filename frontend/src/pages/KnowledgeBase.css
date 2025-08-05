@@ -140,6 +140,7 @@
   border-radius: 8px;
   font-size: 1rem;
   transition: border-color 0.2s ease;
+  box-sizing: border-box;
 }
 
 .form-group input:focus,
@@ -190,8 +191,8 @@
 
 .knowledge-base-content {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 1.5rem;
   flex: 1;
   overflow: hidden;
 }
@@ -295,7 +296,6 @@
 }
 
 .kb-item:hover {
-  transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
   border-color: #e2e8f0;
 }

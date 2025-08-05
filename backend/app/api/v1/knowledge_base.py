@@ -3,9 +3,10 @@
 """
 import os
 import xml.etree.ElementTree as ET
-from fastapi import APIRouter, HTTPException, BackgroundTasks, File, Form, UploadFile
+import json
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -21,17 +22,14 @@ from ...models.responses import (
     KnowledgeBaseBuildResponse,
     KnowledgeBaseSearchResponse,
     KnowledgeBaseMetrics,
-    ErrorResponse
 )
 from ...core.exceptions import (
     KnowledgeBaseNotFoundError,
-    DatabaseNotFoundError,
     BuildInProgressError
 )
 from ...core.kb_builder import kb_manager
 from ...config import settings
 from ...core.logging import get_logger
-from ...core.graph.src.builders.lightrag_builder import LightRAGGraphBuilder
 
 logger = get_logger(__name__)
 
@@ -49,6 +47,7 @@ async def create_knowledge_base(request: KnowledgeBaseCreateRequest):
     Returns:
         KnowledgeBaseResponse: 创建结果
     """
+    global json
     try:
         kb_id = request.kb_id or str(uuid.uuid4())
         
@@ -115,7 +114,6 @@ async def create_knowledge_base(request: KnowledgeBaseCreateRequest):
 @router.post("/{kb_id}/build", response_model=KnowledgeBaseBuildResponse)
 async def build_knowledge_base(
     kb_id: str, 
-    background_tasks: BackgroundTasks,
     config: Optional[BuildConfigRequest] = None
 ):
     """
@@ -123,7 +121,6 @@ async def build_knowledge_base(
     
     Args:
         kb_id: 知识库ID
-        background_tasks: 后台任务
         config: 构建配置
         
     Returns:
@@ -134,56 +131,56 @@ async def build_knowledge_base(
         kb_dir = Path(settings.DATABASES_DIR) / kb_id
         if not kb_dir.exists():
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
+        try:
+            # 创建agraph的LightRAG构建器
+            from agraph import create_lightrag_graph_builder
+            rag_storage_dir = kb_dir / "rag_storage"
+            builder = create_lightrag_graph_builder(str(rag_storage_dir))
+
+            # 获取文档列表
+            docs_dir = kb_dir / "docs"
+            documents = []
+            if docs_dir.exists():
+                from agraph.processer import can_process, process_document
+
+                # 扫描并处理所有支持的文件
+                supported_files = [f for f in docs_dir.rglob("*") if f.is_file() and can_process(f)]
+                logger.info(f"发现 {len(supported_files)} 个可处理的文件")
+
+                for file_path in supported_files:
+                    try:
+                        logger.info(f"📄 处理文件: {file_path.name}")
+                        content = process_document(file_path)
+
+                        # 添加文件来源信息
+                        doc_with_source = f"[文件: {file_path.name}]\n\n{content}"
+                        documents.append(doc_with_source)
+
+                    except Exception as e:
+                        logger.error(f"⚠️  处理 {file_path.name} 时出错: {e}")
+                        continue
+            logger.info("Found %d documents to process", len(documents))
+            # 构建知识图谱
+            if documents:
+                graph = await builder.abuild_graph(texts = documents, graph_name = f"kb_{kb_id}")
+                logger.info(
+                    f"Built graph for {kb_id}: {len(graph.entities)} entities, {len(graph.relations)} relations")
+
+            # await builder.cleanup()
+
+        except Exception as e:
+            logger.error(f"Error in build task for {kb_id}: {e}")
+            raise
         
-        # 使用LightRAGGraphBuilder构建知识图谱
-        def build_task():
-            async def async_build():
-                try:
-                    # 创建LightRAG构建器
-                    rag_storage_dir = kb_dir / "rag_storage"
-                    builder = LightRAGGraphBuilder(str(rag_storage_dir))
-                    
-                    # 获取文档列表
-                    docs_dir = kb_dir / "docs"
-                    documents = []
-                    if docs_dir.exists():
-                        supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html'}
-                        for file_path in docs_dir.iterdir():
-                            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    documents.append(f.read())
-                    
-                    # 构建知识图谱
-                    if documents:
-                        graph = await builder.build_graph(texts=documents, graph_name=f"kb_{kb_id}")
-                        logger.info(f"Built graph for {kb_id}: {len(graph.entities)} entities, {len(graph.relations)} relations")
-                    
-                    await builder.cleanup()
-                    
-                except Exception as e:
-                    logger.error(f"Error in build task for {kb_id}: {e}")
-                    raise
-                    
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(async_build())
-            finally:
-                loop.close()
-        
-        # 启动后台任务
-        background_tasks.add_task(build_task)
         task_id = str(uuid.uuid4())
-        
-        logger.info(f"Started build task {task_id} for knowledge base {kb_id}")
+        logger.info(f"Knowledge base {kb_id} build completed successfully")
         
         return KnowledgeBaseBuildResponse(
             kb_id=kb_id,
             task_id=task_id,
-            status="building",
-            message="Knowledge base build started",
-            progress=0.0,
+            status="completed",
+            message="Knowledge base build completed",
+            progress=100.0,
             started_at=datetime.now()
         )
         
@@ -238,8 +235,7 @@ async def get_build_status(kb_id: str):
 @router.post("/{kb_id}/update")
 async def update_knowledge_base(
     kb_id: str, 
-    request: KnowledgeBaseUpdateRequest,
-    background_tasks: BackgroundTasks
+    request: KnowledgeBaseUpdateRequest
 ):
     """
     增量更新知识库
@@ -247,7 +243,6 @@ async def update_knowledge_base(
     Args:
         kb_id: 知识库ID
         request: 更新请求
-        background_tasks: 后台任务
         
     Returns:
         Dict: 更新结果
@@ -258,27 +253,48 @@ async def update_knowledge_base(
         if not kb_dir.exists():
             raise KnowledgeBaseNotFoundError(f"Knowledge base {kb_id} not found")
         
+        # 创建agraph的LightRAG构建器
+        from agraph import create_lightrag_graph_builder
+        from agraph.processer import can_process, process_document
+        rag_storage_dir = kb_dir / "rag_storage"
+        builder = create_lightrag_graph_builder(str(rag_storage_dir))
+        
         # 获取新文档列表
         docs_dir = kb_dir / "docs"
-        new_documents = []
+        documents = []
         if docs_dir.exists():
-            supported_extensions = {'.pdf', '.docx', '.doc', '.txt', '.md', '.markdown', '.html'}
-            for file_path in docs_dir.iterdir():
-                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                    new_documents.append(str(file_path))
+            # 扫描并处理所有支持的文件
+            supported_files = [f for f in docs_dir.rglob("*") if f.is_file() and can_process(f)]
+            logger.info(f"发现 {len(supported_files)} 个可处理的文件")
+            
+            for file_path in supported_files:
+                try:
+                    logger.info(f"📄 处理文件: {file_path.name}")
+                    content = process_document(file_path)
+                    
+                    # 添加文件来源信息
+                    doc_with_source = f"[文件: {file_path.name}]\n\n{content}"
+                    documents.append(doc_with_source)
+                    
+                except Exception as e:
+                    logger.error(f"⚠️  处理 {file_path.name} 时出错: {e}")
+                    continue
         
-        # 启动更新任务
-        task_id = kb_manager.start_update_task(kb_id, new_documents)
+        # 重新构建知识图谱
+        if documents:
+            graph = await builder.abuild_graph(texts=documents, graph_name=f"kb_{kb_id}")
+            logger.info(f"Updated graph for {kb_id}: {len(graph.entities)} entities, {len(graph.relations)} relations")
         
-        logger.info(f"Started update task {task_id} for knowledge base {kb_id}")
+        task_id = str(uuid.uuid4())
+        logger.info(f"Knowledge base {kb_id} update completed successfully")
         
         return JSONResponse(content={
             "kb_id": kb_id,
             "task_id": task_id,
-            "status": "updating",
-            "message": "Knowledge base update started",
-            "documents_to_process": len(new_documents),
-            "started_at": datetime.now().isoformat()
+            "status": "completed",
+            "message": "Knowledge base update completed",
+            "documents_processed": len(documents),
+            "completed_at": datetime.now().isoformat()
         })
         
     except KnowledgeBaseNotFoundError as e:
@@ -317,10 +333,11 @@ async def search_knowledge_base(kb_id: str, request: KnowledgeBaseSearchRequest)
                 detail="Knowledge base is not ready. Please build the knowledge base first."
             )
         
-        # 使用LightRAGGraphBuilder执行搜索
-        builder = LightRAGGraphBuilder(str(rag_storage_dir))
+        # 使用agraph的create_lightrag_graph_builder创建构建器
+        from agraph import create_lightrag_graph_builder
+        builder = create_lightrag_graph_builder(str(rag_storage_dir))
         try:
-            search_result = await builder.search_graph(
+            search_result = await builder.asearch_graph(
                 query=request.query,
                 search_type=request.search_type
             )
@@ -349,7 +366,7 @@ async def search_knowledge_base(kb_id: str, request: KnowledgeBaseSearchRequest)
                 search_type=request.search_type
             )
         finally:
-            await builder.cleanup()
+            builder.cleanup()
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -683,10 +700,11 @@ async def get_knowledge_graph(kb_id: str):
                 detail="Knowledge graph file not found. Please rebuild the knowledge base."
             )
         
-        # 使用LightRAGGraphBuilder获取图谱统计信息
-        builder = LightRAGGraphBuilder(str(rag_storage_dir))
+        # 使用agraph的create_lightrag_graph_builder获取图谱统计信息
+        from agraph import create_lightrag_graph_builder
+        builder = create_lightrag_graph_builder(str(rag_storage_dir))
         try:
-            stats = await builder.get_graph_statistics()
+            stats = builder.get_graph_statistics()
             
             # 解析GraphML文件并转换为知识图谱JSON格式
             kg_data = _parse_graphml_to_kg_json(str(graphml_file))
@@ -707,7 +725,7 @@ async def get_knowledge_graph(kb_id: str):
                 }
             })
         finally:
-            await builder.cleanup()
+            builder.cleanup()
         
     except KnowledgeBaseNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -716,29 +734,3 @@ async def get_knowledge_graph(kb_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# 后台任务函数
-
-async def _build_knowledge_base_task(kb_id: str, config: Optional[BuildConfigRequest]):
-    """
-    后台知识库构建任务
-    
-    Args:
-        kb_id: 知识库ID
-        config: 构建配置
-    """
-    # 这个函数已经被 kb_manager.start_build_task 替代
-    # 保留为兼容性占位符
-    pass
-
-
-async def _update_knowledge_base_task(kb_id: str, request: KnowledgeBaseUpdateRequest):
-    """
-    后台知识库更新任务
-    
-    Args:
-        kb_id: 知识库ID
-        request: 更新请求
-    """
-    # 这个函数已经被 kb_manager.start_update_task 替代
-    # 保留为兼容性占位符
-    pass

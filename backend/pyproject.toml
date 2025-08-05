@@ -24,6 +24,7 @@ dependencies = [
     "pytest-mock>=3.14.1",
     "aiofiles>=24.1.0",
     "lightrag-hku>=1.4.4",
+    "agraph",
 ]
 
 [project.optional-dependencies]
@@ -33,3 +34,6 @@ test = [
     "httpx>=0.24.0",
     "pytest-mock>=3.10.0",
 ]
+
+[tool.uv.sources]
+agraph = { git = "https://github.com/JasonDZS/agraph.git", rev = "v0.1.0" }
