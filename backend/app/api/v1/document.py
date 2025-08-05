@@ -99,7 +99,7 @@ async def upload_documents(
             }
             
             # 保存文档记录到JSON文件
-            record_file = documents_dir / f"{file_id}_record.json"
+            record_file = documents_dir / f"{file_id}.metadata"
             with open(record_file, 'w', encoding='utf-8') as f:
                 import json
                 json.dump(doc_record, f, indent=2, ensure_ascii=False)

@@ -40,29 +40,41 @@ class DatabaseManager:
             str: Path to created schema.json file
         """
 
-        # 生成sql语句
-        sql_entries = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
-
-        # 生成文档
-        documents = DatabaseManager.generate_documents(db_name, tables)
-
         #构建schema数据
-
         schema_data = {
             "database_name": db_name,
             "tables": table_creation_sql,
-            "sql": sql_entries,
-            "documents": documents,
+            "sql": [],
+            "documents": [],
             "created_at": datetime.datetime.now().isoformat()
         }
+        try:
+            # 生成sql语句
+            logger.info("开始生成SQL语句")
+            sql_entries = DatabaseManager.generate_sql_statements(table_creation_sql, conn)
+            logger.info(f"生成了{len(sql_entries)}条SQL语句")
+        except Exception as e:
+            logger.error(f"生成SQL语句失败: {str(e)}")
+            sql_entries = []
 
+        # 生成文档
+        try:
+            logger.info("开始生成数据库文档")
+            documents = DatabaseManager.generate_documents(db_name, tables)
+            logger.info(f"生成了{len(documents)}条文档")
+        except:
+            logger.error("生成数据库文档失败，使用默认文档")
+            documents = []
+
+        schema_data["sql"] = sql_entries
+        schema_data["documents"] = documents
         # 保存文件
         db_folder = os.path.join(settings.DATABASES_DIR, db_name)
         schema_file = os.path.join(db_folder, "schema.json")
         
         with open(schema_file, 'w', encoding='utf-8') as f:
             json.dump(schema_data, f, indent=2, ensure_ascii=False)
-        
+        logger.info(f"Schema文件已保存: {schema_file}")
         return schema_file
 
     @staticmethod
@@ -149,12 +161,11 @@ class DatabaseManager:
 
         """
         # 构建表结构信息文本
-        cols = ', '.join([f"{col['name']} ({col['type']})" for col in desc['columns']])
-        schema_text = "\n\n".join([
-            f"表名: {desc['table_name']}\n"
-            f"包含列: {cols}"
-            for desc in table_descriptions
-        ])
+        schema_parts = []
+        for desc in table_descriptions:
+            columns_text = ', '.join([f"{col['name']} ({col['type']})" for col in desc['columns']])
+            schema_parts.append(f"表名: {desc['table_name']}\n包含列: {columns_text}")
+        schema_text = "\n\n".join(schema_parts)
 
         prompt = f"""
     基于以下数据库表结构，生成{num_questions}个具体的自然语言查询问题及其对应的SQL查询语句。要求：
@@ -408,13 +419,15 @@ class DatabaseManager:
                 
                 # Create table in database
                 df.to_sql(table_name, conn, if_exists='replace', index=False)
+                logger.info(f"Created table {table_name} with {len(df)} rows and {len(df.columns)} columns.")
                 created_tables.append(TableInfo(
                     table_name=table_name,
                     filename=file.filename,
                     rows=len(df),
                     columns=list(df.columns)
                 ))
-            # Create schema.json file using separate method
+            # Create schema.json file
+            logger.info(f"Creating schema.json for database {db_name} with {len(created_tables)} tables.")
             DatabaseManager.create_schema_json(db_name, table_creation_sql, created_tables, conn)  ##
 
         except Exception as e:
