@@ -25,6 +25,7 @@ dependencies = [
     "aiofiles>=24.1.0",
     "lightrag-hku>=1.4.4",
     "agraph",
+    "python-docx>=1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -36,4 +37,4 @@ test = [
 ]
 
 [tool.uv.sources]
-agraph = { git = "https://github.com/JasonDZS/agraph.git", rev = "v0.1.0" }
+agraph = { git = "https://github.com/JasonDZS/agraph.git", rev = "v0.1.2" }
