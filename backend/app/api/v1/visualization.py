@@ -5,6 +5,9 @@ from fastapi.responses import HTMLResponse
 from ...services.visualization_service import VisualizationService
 from ...services.agent_service import AgentService
 from ...utils.chart_utils import infer_chart_type_from_query
+from ...core.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/visualization", tags=["visualization"])
 
@@ -25,11 +28,11 @@ async def generate_visualization(
         # Get database agent instance
         agent_service = AgentService()
         agent = agent_service.get_agent(db_name)
+        logger.info(f"Using agent for database: {db_name}")
         
         # If chart type not specified, infer from query
         if chart_type is None:
             chart_type = infer_chart_type_from_query(query)
-        
         # Generate visualization
         visualization_service = VisualizationService()
         response = visualization_service.generate_visualization(agent, query, chart_type)
@@ -44,6 +47,7 @@ async def generate_visualization(
             "data_points_count": response.data_points_count,
             "html_length": response.html_length
         }
+        logger.info(f"Generated visualization: {response_data}")
         
         # Calculate execution time
         execution_time = (datetime.datetime.now() - start_time).total_seconds() * 1000

@@ -30,14 +30,14 @@ class Settings:
     # Model settings
     LLM_MODEL: str = os.getenv("LLM_MODEL", "deepseek-ai/DeepSeek-V3")
     LLM_TEMPERATURE: float = 0.0
-    LLM_MAX_TOKENS: int = os.getenv("LLM_MAX_TOKENS", 4096)  # Default max tokens for BGE models
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))  # Default max tokens for BGE models
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "openai")  # Options: "openai", "hf", "ollama", "custom"
     
     # Embedding settings
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "Pro/BAAI/bge-m3")
     EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "openai")  # Options: "openai", "hf", "ollama"
-    EMBEDDING_DIM: int = os.getenv("EMBEDDING_DIM", 1024)  # Default dimension for BGE models
-    EMBEDDING_MAX_TOKEN_SIZE: int = os.getenv("EMBEDDING_MAX_TOKENS", 8192)  # Default max token size for BGE models
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "1024"))  # Default dimension for BGE models
+    EMBEDDING_MAX_TOKEN_SIZE: int = int(os.getenv("EMBEDDING_MAX_TOKENS", "8192"))  # Default max token size for BGE models
 
     @property
     def database_path(self) -> str:

@@ -1,6 +1,10 @@
 from ..core.html_generator.generator import HTMLGenerator
 from ..core.agent import DBAgent
 from ..utils.data_converter import to_processed_data
+from ..core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 class VisualizationResponse:
     def __init__(self, html_content: str, chart_type: str, data_points_count: int):
@@ -16,7 +20,11 @@ class VisualizationService:
     def generate_visualization(self, agent: DBAgent, query: str, chart_type: str) -> VisualizationResponse:
         """Generate visualization from agent query result"""
         # Get query result from agent
-        query_result = agent.ask(query)
+        try:
+            query_result = agent.ask(query)
+        except Exception as e:
+            logger.error(f"Failed to execute query: {query}. Error: {str(e)}")
+            raise ValueError(f"Failed to execute query: {query}. Error: {str(e)}")
         
         # Convert query result to ProcessedData format
         processed_data = to_processed_data(query_result, query, chart_type)

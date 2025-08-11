@@ -7,6 +7,9 @@ from vanna.openai import OpenAI_Chat
 from vanna.chromadb import ChromaDB_VectorStore
 
 from ..config import settings
+from ..core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class MyVanna(ChromaDB_VectorStore, OpenAI_Chat):
@@ -91,7 +94,13 @@ class DBAgent:
         if not self.is_trained:
             raise RuntimeError("DBAgent is not trained yet. Please call train() method first.")
 
-        sql = self.vn.generate_sql(question, allow_llm_to_see_data = True)
+        try:
+            sql = self.vn.generate_sql(question, allow_llm_to_see_data = True)
+        except Exception as e:
+            logger.error(f"Failed to generate SQL for question '{question}': {str(e)}")
+            raise RuntimeError(f"Failed to generate SQL for question '{question}': {str(e)}")
+
+        logger.info(f"Generated SQL for question '{question}': {sql}")
         self.last_generated_sql = sql
         data = self.vn.run_sql(sql)
         return {

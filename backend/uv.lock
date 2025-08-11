@@ -516,7 +516,7 @@ requires-dist = [
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "tiktoken", specifier = ">=0.9.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.24.0" },
-    { name = "vanna", extras = ["chromadb", "openai"], specifier = ">=0.7.9" },
+    { name = "vanna", extras = ["chromadb", "openai"], specifier = "==0.7.9" },
 ]
 provides-extras = ["test"]
 

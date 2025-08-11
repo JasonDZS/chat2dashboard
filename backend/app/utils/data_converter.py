@@ -120,7 +120,7 @@ def _process_standard_data(df: pd.DataFrame, columns: list) -> list[DataPoint]:
         for _, row in df.iterrows():
             sample_data.append(DataPoint(
                 name=str(row[name_col]),
-                value=float(row[value_col]) if pd.notna(row[value_col]) else 0.0
+                value=_convert_to_numeric(row[value_col], fallback=0.0)
             ))
     elif len(columns) == 1:
         # Single column - use index as name and column as value
@@ -128,7 +128,7 @@ def _process_standard_data(df: pd.DataFrame, columns: list) -> list[DataPoint]:
         for idx, row in df.iterrows():
             sample_data.append(DataPoint(
                 name=str(idx),
-                value=float(row[value_col]) if pd.notna(row[value_col]) else 0.0
+                value=_convert_to_numeric(row[value_col], fallback=0.0)
             ))
     
     return sample_data
@@ -148,12 +148,20 @@ def _convert_to_numeric(value: Any, fallback: float = 0.0) -> float:
     try:
         if pd.notna(value):
             if isinstance(value, str):
-                # Try to parse as datetime first
+                # Try direct numeric conversion first
                 try:
-                    return pd.to_datetime(value).timestamp()
-                except:
-                    # If not datetime and not numeric, use fallback
-                    return fallback
+                    return float(value)
+                except ValueError:
+                    # Try to parse as datetime
+                    try:
+                        return pd.to_datetime(value).timestamp()
+                    except:
+                        # Extract numbers from string if possible
+                        import re
+                        numbers = re.findall(r'-?\d+\.?\d*', value)
+                        if numbers:
+                            return float(numbers[0])
+                        return fallback
             else:
                 return float(value)
         else:
