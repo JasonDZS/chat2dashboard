@@ -297,77 +297,169 @@ class DatabaseManager:
 
         return "SELECT 1;"
         
-    @staticmethod
-    def generate_documents(db_name: str, tables: List[TableInfo]) -> List[Dict]:
-        """生成数据库文档"""
+   @staticmethod
+    def generate_documents(db_name: str, tables: List[TableInfo], conn: sqlite3.Connection = None) -> List[Dict]:
+        """生成有价值的数据库文档，使用AI生成有意义的业务描述"""
         documents = []
 
-        # 数据库概览
-        documents.append({
-            "type": "database_overview",
-            "title": f"{db_name} 数据库概览",
-            "content": f"""
-               ## {db_name} 数据库
+        # 数据库概览文档（AI生成业务背景描述）
+        overview_doc = DatabaseManager._generate_database_overview(db_name, tables)
+        documents.append(overview_doc)
 
-               **创建时间**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}
-               **包含表数**: {len(tables)}
-
-               ### 主要数据表:
-               {', '.join([t.table_name for t in tables])}
-               """
-        })
-
-        # 每表文档
+        # 表文档（AI生成每表业务含义）
         for table in tables:
-            # 列描述
-            columns_desc = "\n".join([
-                f"- **{col}**: 数据类型待检测，建议分析方向..."
-                for col in table.columns
-            ])
+            table_doc = DatabaseManager._generate_table_document(table, conn)
+            documents.append(table_doc)
 
-            documents.append({
-                "type": "table_schema",
-                "table": table.table_name,
-                "title": f"{table.table_name} 表结构",
-                "content": f"""
-                   ## {table.table_name}
-
-                   **来源文件**: {table.filename}
-                   **行数**: {table.rows:,}
-                   **列数**: {len(table.columns)}
-
-                   ### 字段列表:
-                   {columns_desc}
-
-                   ### 数据分析建议:
-                   1. 探索各字段的分布情况
-                   2. 识别关键字段之间的关系
-                   3. 分析时间趋势（如果存在时间字段）
-                   """
-            })
-
-        # 分析指南
-        documents.append({
-            "type": "analysis_guide",
-            "title": "数据分析指南",
-            "content": """
-               ## 推荐分析方向
-
-               ### 1. 趋势分析
-               - 随时间变化的指标趋势
-               - 不同分类下的指标对比
-
-               ### 2. 分布分析
-               - 关键指标的分布情况
-               - 地理分布（如果包含位置数据）
-
-               ### 3. 相关性分析
-               - 不同字段间的相关性
-               - 影响因素分析
-               """
-        })
+        # 分析指南（基于实际数据的AI分析建议）
+        analysis_guide = DatabaseManager._generate_analysis_guide(db_name, tables, conn)
+        documents.append(analysis_guide)
 
         return documents
+
+    @staticmethod
+    def _generate_database_overview(db_name: str, tables: List[TableInfo]) -> Dict:
+        """生成数据库概览文档（业务背景描述）"""
+        # 收集基本信息
+        table_names = [table.table_name for table in tables]
+
+        # AI生成有意义的概述
+        prompt = f"""
+    请为名为 "{db_name}" 的数据库撰写一个有价值的业务概述文档。该数据库包含以下表：{", ".join(table_names)}。
+
+    请从业务角度描述：
+    1. 这个数据库可能服务于什么类型的业务场景？
+    2. 这些数据能解决哪些业务问题？
+    3. 数据可能来自哪些业务系统？
+    4. 主要分析价值是什么？
+
+    请使用专业的业务语言，避免技术术语。
+            """
+
+        content = DatabaseManager._call_ai_for_document(prompt)
+
+        return {
+            "type": "database_overview",
+            "title": f"{db_name} 数据库业务概述",
+            "content": content
+        }
+
+    @staticmethod
+    def _generate_table_document(table: TableInfo, conn: sqlite3.Connection) -> Dict:
+        """生成单表文档（业务含义+分析建议）"""
+        # 获取表的前3行样本数据
+        sample_data = []
+        if conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute(f"SELECT * FROM \"{table.table_name}\" LIMIT 3")
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                sample_data = [dict(zip(columns, row)) for row in rows]
+            except sqlite3.Error:
+                pass
+
+        # AI生成表描述
+        prompt = f"""
+    请为数据表 "{table.table_name}" 撰写详细的业务文档。该表来自文件 {table.filename}，包含 {table.rows} 行和 {len(table.columns)} 列。
+
+    表结构：
+    {", ".join(table.columns)}
+
+    样本数据（前3行）：
+    {json.dumps(sample_data, indent=2, ensure_ascii=False) if sample_data else "无样本数据"}
+
+    请包含以下内容：
+    1. 这张表在业务中代表什么？（例如：客户交易记录、用户行为日志等）
+    2. 主要字段的业务含义解释
+    3. 基于样本数据的具体分析建议
+    4. 可能的业务应用场景
+
+    请使用专业、易懂的业务语言，避免技术术语。
+            """
+
+        content = DatabaseManager._call_ai_for_document(prompt)
+
+        return {
+            "type": "table_schema",
+            "table_name": table.table_name,
+            "title": f"{table.table_name} 表业务文档",
+            "content": content
+        }
+
+    @staticmethod
+    def _generate_analysis_guide(db_name: str, tables: List[TableInfo], conn: sqlite3.Connection) -> Dict:
+        """生成分析指南（基于实际数据的建议）"""
+        # 收集表信息
+        table_info = []
+        for table in tables:
+            # 获取每表的数据摘要
+            summary = {}
+            if conn:
+                try:
+                    cursor = conn.cursor()
+                    for col in table.columns:
+                        cursor.execute(f"SELECT COUNT(DISTINCT \"{col}\") FROM \"{table.table_name}\"")
+                        distinct_count = cursor.fetchone()[0]
+                        summary[col] = {
+                            "distinct_values": distinct_count,
+                            "suggestion": "高基数字段" if distinct_count > 100 else "低基数字段"
+                        }
+                except sqlite3.Error:
+                    pass
+            table_info.append({
+                "table_name": table.table_name,
+                "columns": table.columns,
+                "summary": summary
+            })
+
+        # AI生成分析指南
+        prompt = f"""
+    基于数据库 "{db_name}" 的结构和初步分析，请创建一份有价值的数据分析指南。
+
+    数据库包含以下表：
+    {json.dumps(table_info, indent=2, ensure_ascii=False)}
+
+    请提供：
+    1. 3-5个最值得关注的分析方向（基于数据结构）
+    2. 每个方向的具体分析方法和预期价值
+    3. 推荐的可视化方式
+    4. 潜在的数据质量问题和检查建议
+
+    请使用专业的数据分析语言。
+            """
+
+        content = DatabaseManager._call_ai_for_document(prompt)
+
+        return {
+            "type": "analysis_guide",
+            "title": "数据分析与洞察指南",
+            "content": content
+        }
+
+    @staticmethod
+    def _call_ai_for_document(prompt: str) -> str:
+        """调用AI生成文档内容"""
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.OPENAI_API_KEY, base_url=settings.OPENAI_API_BASE)
+
+            response = client.chat.completions.create(
+                model=settings.LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": "你是一个资深数据分析师，擅长撰写清晰、专业的数据文档。"},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,
+                max_tokens=2048
+            )
+
+            return response.choices[0].message.content.strip()
+
+        except Exception as e:
+            print(f"AI文档生成失败: {str(e)}")
+            # 返回备选内容
+            return "## 文档生成失败\n请手动补充文档内容。"
 
     @staticmethod
     def create_database_from_files(files: List[UploadFile], db_name: str) -> Tuple[List[TableInfo], str]:
