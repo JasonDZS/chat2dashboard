@@ -60,7 +60,7 @@ class DatabaseManager:
         # 生成文档
         try:
             logger.info("开始生成数据库文档")
-            documents = DatabaseManager.generate_documents(db_name, tables)
+            documents = DatabaseManager.generate_documents(db_name, tables, conn)
             logger.info(f"生成了{len(documents)}条文档")
         except:
             logger.error("生成数据库文档失败，使用默认文档")
@@ -298,7 +298,7 @@ class DatabaseManager:
         return "SELECT 1;"
         
    @staticmethod
-    def generate_documents(db_name: str, tables: List[TableInfo], conn: sqlite3.Connection = None) -> List[Dict]:
+    def generate_documents(db_name: str, tables: List[TableInfo], conn: sqlite3.Connection) -> List[Dict]:
         """生成有价值的数据库文档，使用AI生成有意义的业务描述"""
         documents = []
 
@@ -347,12 +347,12 @@ class DatabaseManager:
     @staticmethod
     def _generate_table_document(table: TableInfo, conn: sqlite3.Connection) -> Dict:
         """生成单表文档（业务含义+分析建议）"""
-        # 获取表的前3行样本数据
+        # 获取表的前10行样本数据
         sample_data = []
         if conn:
             try:
                 cursor = conn.cursor()
-                cursor.execute(f"SELECT * FROM \"{table.table_name}\" LIMIT 3")
+                cursor.execute(f"SELECT * FROM \"{table.table_name}\" LIMIT 10")
                 columns = [desc[0] for desc in cursor.description]
                 rows = cursor.fetchall()
                 sample_data = [dict(zip(columns, row)) for row in rows]
