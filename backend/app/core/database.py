@@ -109,6 +109,12 @@ class DatabaseManager:
         # 使用API同时生成问题和SQL
         ai_questions_sql = DatabaseManager._generate_questions_and_sql_with_ai(table_descriptions)
 
+        # 创建OpenAI客户端实例
+        client = OpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE
+        )
+
         # 验证并存储生成的SQL
         for entry in ai_questions_sql:
             # 验证SQL是否可执行
@@ -121,33 +127,95 @@ class DatabaseManager:
 
                     # 如果EXPLAIN返回结果，说明SQL有效
                     if explain_result:
-                        sql_entries.append({
-                            "question": entry["question"],
-                            "sql": entry["sql"],
-                            "added_at": current_time
-                        })
+                        #AI语义一致性验证
+                        validation_prompt = f"""
+                        请检查SQL是否准确解决了用户问题。只回答"是"或"否"。
+
+                        数据库表结构:
+                        {table_descriptions}
+
+                        用户问题: {entry['question']}
+
+                        生成的SQL: {entry['sql']}
+
+                        验证标准:
+                        1. SQL是否包含问题中提到的所有关键元素?
+                        2. 过滤条件是否完整?
+                        3. 聚合函数使用是否正确?
+                        4. 表连接是否合理?
+
+                        你的判断（只回答是/否）：
+                        """
+
+                        validation_response = client.chat.completions.create(
+                            model=settings.LLM_MODEL,
+                            messages=[
+                                {"role": "system", "content": "你是一个SQL专家，擅长验证SQL查询的准确性。"},
+                                {"role": "user", "content": validation_prompt}
+                            ],
+                            temperature=0.1,  # 更低的温度确保确定性
+                            max_tokens=10
+                        )
+
+                        # 解析AI响应
+                        ai_answer = validation_response.choices[0].message.content.strip().lower()
+                        is_semantically_valid = "是" in ai_answer or "yes" in ai_answer
+
+                        if is_semantically_valid:
+                            # 语义验证通过
+                            sql_entries.append({
+                                "question": entry["question"],
+                                "sql": entry["sql"],
+                                "added_at": current_time,
+                                "validation": "ai_verified"  # 添加验证标记
+                            })
+                        else:
+                            # 语义验证失败，使用默认SQL
+                            print(f"⚠️ SQL语义不匹配: {entry['question']}")
+                            default_sql = DatabaseManager._generate_default_sql(entry["question"], table_descriptions)
+                            sql_entries.append({
+                                "question": entry["question"],
+                                "sql": default_sql,
+                                "added_at": current_time,
+                                "validation": "default_sql"  # 标记为默认SQL
+                            })
                     else:
-                        # 如果验证失败，使用默认SQL
-                        print(f"SQL验证失败: {entry['sql']}")
+                        # 如果语法验证失败，使用默认SQL
+                        print(f"SQL语法验证失败: {entry['sql']}")
                         sql_entries.append({
                             "question": entry["question"],
                             "sql": DatabaseManager._generate_default_sql(entry["question"], table_descriptions),
-                            "added_at": current_time
+                            "added_at": current_time,
+                            "validation": "syntax_failed"
                         })
                 else:
-                    # 没有连接时
+                    # 没有数据库连接
+                    print(f"⚠️ 无数据库连接，使用默认SQL: {entry['question']}")
+                    default_sql = DatabaseManager._generate_default_sql(entry["question"], table_descriptions)
                     sql_entries.append({
                         "question": entry["question"],
-                        "sql": entry["sql"],
-                        "added_at": current_time
+                        "sql": default_sql,
+                        "added_at": current_time,
+                        "validation": "no_connection"
                     })
+
             except sqlite3.Error as e:
                 print(f"SQL执行错误: {str(e)}")
                 # 生成默认SQL
                 sql_entries.append({
                     "question": entry["question"],
                     "sql": DatabaseManager._generate_default_sql(entry["question"], table_descriptions),
-                    "added_at": current_time
+                    "added_at": current_time,
+                    "validation": "error_recovery"
+                })
+            except Exception as e:
+                print(f"AI验证异常: {str(e)}")
+                # 异常时使用原始SQL
+                sql_entries.append({
+                    "question": entry["question"],
+                    "sql": entry["sql"],
+                    "added_at": current_time,
+                    "validation": "ai_failed"
                 })
 
         return sql_entries
