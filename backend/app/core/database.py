@@ -247,8 +247,8 @@ class DatabaseManager:
                     {"role": "system", "content": "你是一个SQL专家，擅长将自然语言问题转换为准确的SQL查询语句。"},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,  # 确保准确性
-                max_tokens=1024
+                temperature=0.7,  
+                max_tokens=4096
             )
 
             # 解析返回的问题和SQL
