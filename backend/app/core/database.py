@@ -109,46 +109,96 @@ class DatabaseManager:
         # 使用API同时生成问题和SQL
         ai_questions_sql = DatabaseManager._generate_questions_and_sql_with_ai(table_descriptions)
 
+        # 创建OpenAI客户端实例
+        client = OpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            base_url=settings.OPENAI_API_BASE
+        )
+
+        discarded_count = 0  # 记录被舍弃的问题数量
+
         # 验证并存储生成的SQL
         for entry in ai_questions_sql:
-            # 验证SQL是否可执行
             try:
-                if conn:
+                if conn:  # 数据库连接可用
                     cursor = conn.cursor()
                     # 使用EXPLAIN验证SQL语法
                     cursor.execute(f"EXPLAIN QUERY PLAN {entry['sql']}")
                     explain_result = cursor.fetchall()
 
-                    # 如果EXPLAIN返回结果，说明SQL有效
+                    # 如果EXPLAIN返回结果，说明SQL语法有效
                     if explain_result:
-                        sql_entries.append({
-                            "question": entry["question"],
-                            "sql": entry["sql"],
-                            "added_at": current_time
-                        })
+                        # 构建语义验证提示词
+                        validation_prompt = f"""
+                        请检查SQL是否准确解决了用户问题。只回答"是"或"否"。
+
+                        数据库支持的表结构:
+                        {table_descriptions}
+
+                        用户问题: {entry['question']}
+
+                        生成的SQL: {entry['sql']}
+
+                        验证标准:
+                        1. SQL是否包含问题中提到的关键元素?
+                        2. 过滤条件是否完整?
+                        3. 聚合函数使用是否正确?
+                        4. 表连接是否合理?
+
+                        你的判断（只回答是/否）：
+                        """
+
+                        # 调用OpenAI API进行语义验证
+                        validation_response = client.chat.completions.create(
+                            model=settings.LLM_MODEL,
+                            messages=[
+                                {"role": "system", "content": "你是一个SQL专家，擅长验证SQL查询的准确性。"},
+                                {"role": "user", "content": validation_prompt}
+                            ],
+                            temperature=0.1,
+                            max_tokens=100
+                        )
+
+                        # 解析AI响应
+                        ai_answer = validation_response.choices[0].message.content.strip().lower()
+                        is_semantically_valid = "是" in ai_answer or "yes" in ai_answer
+
+                        if is_semantically_valid:
+                            # 双重验证通过，存储SQL
+                            sql_entries.append({
+                                "question": entry["question"],
+                                "sql": entry["sql"],
+                                "added_at": current_time,
+                                "validation": "verified"
+                            })
+                            print(f"✅ 验证通过: {entry['question']}")
+                        else:
+                            # 语义验证失败，舍弃问题
+                            discarded_count += 1
+                            print(f"✕ 语义验证失败，舍弃问题: {entry['question']}")
                     else:
-                        # 如果验证失败，使用默认SQL
-                        print(f"SQL验证失败: {entry['sql']}")
-                        sql_entries.append({
-                            "question": entry["question"],
-                            "sql": DatabaseManager._generate_default_sql(entry["question"], table_descriptions),
-                            "added_at": current_time
-                        })
-                else:
-                    # 没有连接时
-                    sql_entries.append({
-                        "question": entry["question"],
-                        "sql": entry["sql"],
-                        "added_at": current_time
-                    })
+                        # 语法验证失败，舍弃问题
+                        discarded_count += 1
+                        print(f"✕ 语法验证失败，舍弃问题: {entry['question']}")
+                else:  # 没有数据库连接
+                    # 直接舍弃问题，不进行任何验证
+                    discarded_count += 1
+                    print(f"✕ 无数据库连接，舍弃问题: {entry['question']}")
             except sqlite3.Error as e:
-                print(f"SQL执行错误: {str(e)}")
-                # 生成默认SQL
-                sql_entries.append({
-                    "question": entry["question"],
-                    "sql": DatabaseManager._generate_default_sql(entry["question"], table_descriptions),
-                    "added_at": current_time
-                })
+                # SQL执行错误，舍弃问题
+                discarded_count += 1
+                print(f"✕ SQL执行错误，舍弃问题: {entry['question']} - {str(e)}")
+            except Exception as e:
+                # AI验证异常，舍弃问题
+                discarded_count += 1
+                print(f"✕ AI验证异常，舍弃问题: {entry['question']} - {str(e)}")
+
+        # 输出统计信息
+        total_questions = len(ai_questions_sql)
+        valid_questions = len(sql_entries)
+        print(f"问题生成统计: 共生成 {total_questions} 个问题，"
+              f"通过验证 {valid_questions} 个，"
+              f"舍弃 {discarded_count} 个")
 
         return sql_entries
 
@@ -197,8 +247,8 @@ class DatabaseManager:
                     {"role": "system", "content": "你是一个SQL专家，擅长将自然语言问题转换为准确的SQL查询语句。"},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,  # 确保准确性
-                max_tokens=1024
+                temperature=0.7,  
+                max_tokens=4096
             )
 
             # 解析返回的问题和SQL
