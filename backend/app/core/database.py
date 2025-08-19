@@ -4,6 +4,7 @@ import sqlite3
 import datetime
 from typing import List, Dict, Any, Tuple
 from fastapi import UploadFile
+from openai import OpenAI
 
 try:
     import pandas as pd
@@ -347,7 +348,7 @@ class DatabaseManager:
 
         return "SELECT 1;"
         
-   @staticmethod
+    @staticmethod
     def generate_documents(db_name: str, tables: List[TableInfo], conn: sqlite3.Connection) -> List[Dict]:
         """生成有价值的数据库文档，使用AI生成有意义的业务描述"""
         documents = []
